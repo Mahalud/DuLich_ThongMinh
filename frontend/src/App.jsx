@@ -73,6 +73,10 @@ function App() {
     password: 'DemoPass123!',
   })
   const [currentUser, setCurrentUser] = useState(null)
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatStatus, setChatStatus] = useState('')
+  const [chatRecipientId, setChatRecipientId] = useState(1)
   const [profileForm, setProfileForm] = useState({
     travel_preferences: 'biển,ẩm thực',
     budget_estimate: '6000000',
@@ -638,6 +642,89 @@ function App() {
     }
   }
 
+  useEffect(() => {
+    if (!currentUser || activeTab !== 'chat') return undefined
+
+    const roomName = `support-${Math.min(currentUser.id, chatRecipientId)}-${Math.max(currentUser.id, chatRecipientId)}`
+    const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomName}/`)
+    setChatStatus('Đang kết nối chat realtime...')
+
+    socket.onopen = () => {
+      setChatStatus('Đã kết nối chat realtime.')
+      fetch(`${backendUrl}/api/chat/messages/?user_id=${currentUser.id}&receiver_id=${chatRecipientId}`)
+        .then((response) => response.ok ? response.json() : [])
+        .then((messages) => setChatMessages(messages))
+        .catch(() => setChatMessages([]))
+    }
+
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+      setChatMessages((current) => {
+        const exists = current.some((item) => item.id === message.id)
+        if (exists) return current
+        return [...current, {
+          id: message.id,
+          sender: Number(message.sender),
+          receiver: Number(message.receiver),
+          content: message.content,
+          created_at: message.created_at,
+        }]
+      })
+    }
+
+    socket.onclose = () => {
+      setChatStatus('Kết nối chat đã đóng.')
+    }
+
+    socket.onerror = () => {
+      setChatStatus('Không thể kết nối chat realtime.')
+    }
+
+    return () => socket.close()
+  }, [activeTab, currentUser, chatRecipientId])
+
+  const handleChatSubmit = async (event) => {
+    event.preventDefault()
+    if (!currentUser || !chatInput.trim()) return
+
+    const payload = {
+      sender: currentUser.id,
+      receiver: chatRecipientId,
+      content: chatInput.trim(),
+      user_id: currentUser.id,
+      receiver_id: chatRecipientId,
+    }
+
+    const roomName = `support-${Math.min(currentUser.id, chatRecipientId)}-${Math.max(currentUser.id, chatRecipientId)}`
+    const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomName}/`)
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        message: payload.content,
+        sender_id: payload.sender,
+        receiver_id: payload.receiver,
+      }))
+      socket.close()
+    }
+
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/messages/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Gửi tin nhắn thất bại.')
+      }
+
+      const savedMessage = await response.json()
+      setChatMessages((current) => [...current, savedMessage])
+      setChatInput('')
+    } catch (err) {
+      setChatStatus(err.message)
+    }
+  }
+
   const saveSearchHistory = async (event) => {
     event.preventDefault()
     if (!currentUser) {
@@ -735,6 +822,9 @@ function App() {
           </button>
           <button type="button" className={activeTab === 'profile' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('profile')}>
             Hồ sơ
+          </button>
+          <button type="button" className={activeTab === 'chat' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('chat')}>
+            Chat realtime
           </button>
           <button type="button" className={activeTab === 'admin' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('admin')}>
             Quản trị
@@ -1045,6 +1135,49 @@ function App() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'chat' && (
+          <section className="profile-panel">
+            <div className="section-head">
+              <span className="eyebrow dark">Chat realtime</span>
+              <h2>Hỗ trợ khách hàng trực tiếp</h2>
+            </div>
+
+            <div className="admin-form">
+              <label>
+                Người nhận
+                <select value={chatRecipientId} onChange={(event) => setChatRecipientId(Number(event.target.value))}>
+                  <option value={1}>Quản trị viên</option>
+                  <option value={2}>Hỗ trợ booking</option>
+                </select>
+              </label>
+              {!currentUser && <p>Vui lòng đăng nhập để bắt đầu chat realtime.</p>}
+              {currentUser && (
+                <>
+                  <div className="chat-box">
+                    {chatMessages.length === 0 ? (
+                      <p className="loading-state">Chưa có tin nhắn nào.</p>
+                    ) : (
+                      chatMessages.map((item) => (
+                        <div key={item.id || `${item.sender}-${item.created_at}`} className={Number(item.sender) === Number(currentUser.id) ? 'chat-message mine' : 'chat-message'}>
+                          <strong>{Number(item.sender) === Number(currentUser.id) ? 'Bạn' : 'Admin'}</strong>
+                          <p>{item.content}</p>
+                          <small>{item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : 'Mới'}</small>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <form onSubmit={handleChatSubmit} className="inline-group chat-input-row">
+                    <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Nhập tin nhắn..." />
+                    <button type="submit" className="primary-btn">Gửi</button>
+                  </form>
+                  {chatStatus && <p className="loading-state">{chatStatus}</p>}
+                </>
+              )}
             </div>
           </section>
         )}
