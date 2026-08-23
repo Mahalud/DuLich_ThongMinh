@@ -1,0 +1,37 @@
+from django.urls import path
+
+from .views import (
+    accommodation_list,
+    admin_accommodation_detail,
+    admin_accommodation_list_create,
+    admin_destination_detail,
+    admin_destination_list_create,
+    admin_room_type_detail,
+    admin_room_type_list_create,
+    booking_create,
+    destination_list,
+    health_check,
+    login_user,
+    profile_detail,
+    recommendation_view,
+    register_user,
+    weather_forecast,
+)
+
+urlpatterns = [
+    path('health/', health_check, name='health_check'),
+    path('api/destinations/', destination_list, name='destination_list'),
+    path('api/accommodations/', accommodation_list, name='accommodation_list'),
+    path('api/recommendations/', recommendation_view, name='recommendation_view'),
+    path('api/bookings/', booking_create, name='booking_create'),
+    path('api/weather/', weather_forecast, name='weather_forecast'),
+    path('api/auth/register/', register_user, name='register_user'),
+    path('api/auth/login/', login_user, name='login_user'),
+    path('api/profile/<int:user_id>/', profile_detail, name='profile_detail'),
+    path('api/admin/destinations/', admin_destination_list_create, name='admin_destination_list_create'),
+    path('api/admin/destinations/<int:destination_id>/', admin_destination_detail, name='admin_destination_detail'),
+    path('api/admin/accommodations/', admin_accommodation_list_create, name='admin_accommodation_list_create'),
+    path('api/admin/accommodations/<int:accommodation_id>/', admin_accommodation_detail, name='admin_accommodation_detail'),
+    path('api/admin/accommodations/<int:accommodation_id>/room-types/', admin_room_type_list_create, name='admin_room_type_list_create'),
+    path('api/admin/room-types/<int:room_type_id>/', admin_room_type_detail, name='admin_room_type_detail'),
+]
