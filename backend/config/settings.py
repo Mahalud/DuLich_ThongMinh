@@ -61,6 +61,13 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'travel_cache',
+    }
+}
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [

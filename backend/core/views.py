@@ -5,8 +5,10 @@ from datetime import date
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+import requests
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
@@ -50,6 +52,79 @@ def accommodation_list(request):
     accommodations = Accommodation.objects.prefetch_related('room_types').all().order_by('-rating')
     serializer = AccommodationSerializer(accommodations, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+def destination_lookup(request):
+    query = (request.GET.get('q') or '').strip()
+    if not query:
+        return Response({'results': []}, status=status.HTTP_400_BAD_REQUEST)
+
+    cache_key = f'destination_lookup:{query.lower()}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+
+    try:
+        nominatim_response = requests.get(
+            'https://nominatim.openstreetmap.org/search',
+            params={'q': query, 'format': 'jsonv2', 'limit': 5, 'addressdetails': 1},
+            headers={'User-Agent': 'DuLichThongMinhDemo/1.0'},
+            timeout=15,
+        )
+        nominatim_response.raise_for_status()
+        places = nominatim_response.json()
+    except Exception:
+        places = []
+
+    results = []
+    for place in places:
+        lat = float(place.get('lat', 0) or 0)
+        lon = float(place.get('lon', 0) or 0)
+        place_name = place.get('display_name') or place.get('name') or query
+        image_url = ''
+        unsplash_key = os.getenv('UNSPLASH_ACCESS_KEY')
+        if unsplash_key:
+            try:
+                image_response = requests.get(
+                    'https://api.unsplash.com/search/photos',
+                    params={'query': query, 'per_page': 1, 'orientation': 'landscape'},
+                    headers={'Authorization': f'Client-ID {unsplash_key}'},
+                    timeout=15,
+                )
+                if image_response.status_code == 200:
+                    image_payload = image_response.json()
+                    items = image_payload.get('results', [])
+                    if items:
+                        image_url = items[0].get('urls', {}).get('regular') or items[0].get('urls', {}).get('small') or ''
+            except Exception:
+                image_url = ''
+        else:
+            image_url = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80'
+
+        results.append({
+            'name': place.get('name') or query,
+            'full_name': place_name,
+            'latitude': lat,
+            'longitude': lon,
+            'category': 'biển' if 'biển' in query.lower() else 'thành phố' if 'tp' in query.lower() or 'thành phố' in query.lower() else 'núi' if 'núi' in query.lower() else 'ẩm thực',
+            'image_url': image_url,
+            'source': 'nominatim',
+        })
+
+    if not results:
+        results = [{
+            'name': query,
+            'full_name': query,
+            'latitude': 0.0,
+            'longitude': 0.0,
+            'category': 'biển',
+            'image_url': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+            'source': 'fallback',
+        }]
+
+    cache.set(cache_key, results, timeout=3600)
+    return Response({'results': results})
 
 
 @api_view(['GET', 'POST'])
@@ -356,18 +431,40 @@ def payment_init(request):
     if amount_value <= 0:
         return Response({'error': 'Số tiền thanh toán phải lớn hơn 0.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    params = urlencode({
-        'booking_id': booking.id,
-        'status': 'success',
-        'amount': amount_value,
-        'ref': f'BOOK-{booking.id}',
-    })
-    redirect_url = f'{return_url}?{params}'
+    tnm_code = os.getenv('VNPAY_TMN_CODE')
+    hash_secret = os.getenv('VNPAY_HASH_SECRET')
+    if tnm_code and hash_secret:
+        params = {
+            'vnp_TmnCode': tnm_code,
+            'vnp_Amount': str(amount_value * 100),
+            'vnp_Command': 'pay',
+            'vnp_CreateDate': date.today().strftime('%Y%m%d%H%M%S'),
+            'vnp_CurrCode': 'VND',
+            'vnp_IpAddr': '127.0.0.1',
+            'vnp_Locale': 'vn',
+            'vnp_OrderInfo': f'Booking_{booking.id}',
+            'vnp_OrderType': 'other',
+            'vnp_ReturnUrl': return_url,
+            'vnp_TxnRef': f'BOOK-{booking.id}',
+        }
+        query = urlencode(params)
+        redirect_url = f'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?{query}'
+        gateway_name = 'vnpay'
+    else:
+        params = urlencode({
+            'booking_id': booking.id,
+            'status': 'success',
+            'amount': amount_value,
+            'ref': f'BOOK-{booking.id}',
+        })
+        redirect_url = f'{return_url}?{params}'
+        gateway_name = 'sandbox'
 
     return Response({
         'booking_id': booking.id,
         'amount': amount_value,
         'status': 'pending',
+        'provider': gateway_name,
         'redirect_url': redirect_url,
         'message': 'Đã khởi tạo thanh toán sandbox thành công.',
     })
@@ -449,6 +546,38 @@ def route_planning(request):
     except ValueError:
         return Response({'error': 'start_lat, start_lng, end_lat, end_lng không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    ors_api_key = os.getenv('ORS_API_KEY')
+    if ors_api_key:
+        try:
+            response = requests.post(
+                'https://api.openrouteservice.org/v2/directions/driving-car/json',
+                headers={'Authorization': ors_api_key, 'Content-Type': 'application/json'},
+                json={'coordinates': [[start_lng, start_lat], [end_lng, end_lat]], 'format': 'json'},
+                timeout=20,
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                route = payload.get('routes', [{}])[0]
+                summary = route.get('summary', {})
+                distance_km = round((summary.get('distance', 0) or 0) / 1000, 1)
+                duration_minutes = max(10, int((summary.get('duration', 0) or 0) / 60))
+                google_maps_url = (
+                    'https://www.google.com/maps/dir/?api=1'
+                    f'&origin={start_lat},{start_lng}'
+                    f'&destination={end_lat},{end_lng}'
+                    '&travelmode=driving'
+                )
+                return Response({
+                    'distance_km': distance_km,
+                    'duration_minutes': duration_minutes,
+                    'google_maps_url': google_maps_url,
+                    'distance_label': f'{distance_km} km',
+                    'duration_label': f'{duration_minutes} phút',
+                    'provider': 'openrouteservice',
+                })
+        except Exception:
+            pass
+
     distance_km = _haversine_km(start_lat, start_lng, end_lat, end_lng)
     speed_kmh = 35.0
     duration_minutes = max(10, int((distance_km / speed_kmh) * 60))
@@ -465,6 +594,7 @@ def route_planning(request):
         'google_maps_url': google_maps_url,
         'distance_label': f'{round(distance_km, 1)} km',
         'duration_label': f'{duration_minutes} phút',
+        'provider': 'haversine-fallback',
     })
 
 
@@ -603,6 +733,11 @@ def weather_forecast(request):
     except ValueError:
         return Response({'error': 'latitude, longitude và date không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    cache_key = f'weather:{latitude}:{longitude}:{target_date}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+
     params = {
         'latitude': latitude,
         'longitude': longitude,
@@ -643,8 +778,7 @@ def weather_forecast(request):
     rain_membership = max(0.0, min(1.0, 1 - (precipitation / 100)))
     wind_membership = max(0.0, min(1.0, 1 - (wind_speed / 60)))
     weather_score = 0.5 * temp_membership + 0.3 * rain_membership + 0.2 * wind_membership
-
-    return Response({
+    body = {
         'date': str(target_date),
         'temperature': round(temperature, 1),
         'precipitation_probability': round(precipitation, 1),
@@ -653,7 +787,9 @@ def weather_forecast(request):
         'temperature_membership': round(temp_membership, 4),
         'rain_membership': round(rain_membership, 4),
         'wind_membership': round(wind_membership, 4),
-    })
+    }
+    cache.set(cache_key, body, timeout=3600)
+    return Response(body)
 
 
 @api_view(['POST'])
