@@ -67,6 +67,20 @@ function App() {
   const [bookingMessage, setBookingMessage] = useState('')
   const [bookingLoading, setBookingLoading] = useState(false)
   const [adminMessage, setAdminMessage] = useState('')
+  const [authForm, setAuthForm] = useState({
+    username: 'traveler_demo',
+    email: 'traveler_demo@example.com',
+    password: 'DemoPass123!',
+  })
+  const [currentUser, setCurrentUser] = useState(null)
+  const [profileForm, setProfileForm] = useState({
+    travel_preferences: 'biển,ẩm thực',
+    budget_estimate: '6000000',
+    free_text: 'Muốn nghỉ dưỡng, ăn ngon và trải nghiệm biển.',
+  })
+  const [profileMessage, setProfileMessage] = useState('')
+  const [searchQuery, setSearchQuery] = useState('du lịch biển Phú Quốc')
+  const [searchHistory, setSearchHistory] = useState([])
 
   const fetchRecommendations = async (payload) => {
     const params = new URLSearchParams({
@@ -483,6 +497,172 @@ function App() {
     }
   }
 
+  const fetchUserProfile = async (userId) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/profile/${userId}/`)
+      if (!response.ok) {
+        throw new Error('Không thể tải hồ sơ người dùng')
+      }
+      const data = await response.json()
+      setProfileForm({
+        travel_preferences: (data.travel_preferences || []).join(', '),
+        budget_estimate: String(data.budget_estimate || 6000000),
+        free_text: data.free_text || '',
+      })
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  const fetchSearchHistory = async (userId) => {
+    if (!userId) return
+    try {
+      const response = await fetch(`${backendUrl}/api/search-history/?user_id=${userId}`)
+      if (!response.ok) {
+        throw new Error('Không thể tải lịch sử tìm kiếm')
+      }
+      const data = await response.json()
+      setSearchHistory(data)
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  const handleAuthField = (event) => {
+    const { name, value } = event.target
+    setAuthForm((current) => ({ ...current, [name]: value }))
+  }
+
+  const handleProfileField = (event) => {
+    const { name, value } = event.target
+    setProfileForm((current) => ({ ...current, [name]: value }))
+  }
+
+  const loginDemoUser = async (event) => {
+    if (event) event.preventDefault()
+    try {
+      const response = await fetch(`${backendUrl}/api/auth/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: authForm.username,
+          password: authForm.password,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.error || 'Đăng nhập demo thất bại.')
+      }
+
+      const data = await response.json()
+      setCurrentUser(data.user)
+      setProfileForm({
+        travel_preferences: (data.profile.travel_preferences || []).join(', '),
+        budget_estimate: String(data.profile.budget_estimate || 6000000),
+        free_text: data.profile.free_text || '',
+      })
+      setProfileMessage('Đăng nhập thành công.')
+      fetchSearchHistory(data.user.id)
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  const registerDemoUser = async (event) => {
+    if (event) event.preventDefault()
+    try {
+      const response = await fetch(`${backendUrl}/api/auth/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: authForm.username,
+          email: authForm.email,
+          password: authForm.password,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.error || 'Tạo tài khoản demo thất bại.')
+      }
+
+      const data = await response.json()
+      setCurrentUser(data)
+      setProfileMessage('Tạo tài khoản demo thành công.')
+      fetchUserProfile(data.id)
+      fetchSearchHistory(data.id)
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  const saveProfile = async (event) => {
+    event.preventDefault()
+    if (!currentUser) {
+      setProfileMessage('Vui lòng đăng nhập hoặc tạo tài khoản demo trước.')
+      return
+    }
+
+    try {
+      const response = await fetch(`${backendUrl}/api/profile/${currentUser.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          travel_preferences: profileForm.travel_preferences.split(',').map((item) => item.trim()).filter(Boolean),
+          budget_estimate: Number(profileForm.budget_estimate || 0),
+          free_text: profileForm.free_text,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.detail || 'Cập nhật hồ sơ thất bại.')
+      }
+
+      const data = await response.json()
+      setProfileMessage('Cập nhật hồ sơ người dùng thành công.')
+      setProfileForm({
+        travel_preferences: (data.travel_preferences || []).join(', '),
+        budget_estimate: String(data.budget_estimate || 6000000),
+        free_text: data.free_text || '',
+      })
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  const saveSearchHistory = async (event) => {
+    event.preventDefault()
+    if (!currentUser) {
+      setProfileMessage('Vui lòng đăng nhập trước khi lưu lịch sử tìm kiếm.')
+      return
+    }
+
+    try {
+      const response = await fetch(`${backendUrl}/api/search-history/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          query: searchQuery,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.detail || 'Lưu lịch sử tìm kiếm thất bại.')
+      }
+
+      const data = await response.json()
+      setSearchHistory((current) => [data, ...current])
+      setSearchQuery('')
+      setProfileMessage('Lưu lịch sử tìm kiếm thành công.')
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
   return (
     <div className="travel-app">
       <header className="topbar">
@@ -496,6 +676,9 @@ function App() {
           </button>
           <button type="button" className={activeTab === 'recommend' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('recommend')}>
             Gợi ý
+          </button>
+          <button type="button" className={activeTab === 'profile' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('profile')}>
+            Hồ sơ
           </button>
           <button type="button" className={activeTab === 'admin' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('admin')}>
             Quản trị
@@ -694,6 +877,78 @@ function App() {
                   {bookingLoading ? 'Đang xử lý...' : 'Đặt phòng & thanh toán'}
                 </button>
               </form>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'profile' && (
+          <section className="profile-panel">
+            <div className="section-head">
+              <span className="eyebrow dark">Tài khoản & hồ sơ</span>
+              <h2>Quản lý thông tin cá nhân</h2>
+            </div>
+
+            <div className="profile-grid">
+              <form className="admin-form" onSubmit={loginDemoUser}>
+                <h3>Đăng nhập / tạo tài khoản demo</h3>
+                <label>
+                  Tên đăng nhập
+                  <input name="username" value={authForm.username} onChange={handleAuthField} />
+                </label>
+                <label>
+                  Email
+                  <input name="email" type="email" value={authForm.email} onChange={handleAuthField} />
+                </label>
+                <label>
+                  Mật khẩu
+                  <input name="password" type="password" value={authForm.password} onChange={handleAuthField} />
+                </label>
+                <div className="form-actions">
+                  <button type="submit" className="primary-btn">Đăng nhập</button>
+                  <button type="button" className="secondary-btn" onClick={registerDemoUser}>Tạo tài khoản</button>
+                </div>
+              </form>
+
+              <form className="admin-form" onSubmit={saveProfile}>
+                <h3>Thông tin sở thích du lịch</h3>
+                <label>
+                  Sở thích
+                  <input name="travel_preferences" value={profileForm.travel_preferences} onChange={handleProfileField} />
+                </label>
+                <label>
+                  Ngân sách dự kiến
+                  <input name="budget_estimate" type="number" value={profileForm.budget_estimate} onChange={handleProfileField} />
+                </label>
+                <label>
+                  Mô tả tự do
+                  <textarea name="free_text" rows="4" value={profileForm.free_text} onChange={handleProfileField} />
+                </label>
+                <div className="form-actions">
+                  <button type="submit" className="primary-btn">Lưu hồ sơ</button>
+                </div>
+              </form>
+            </div>
+
+            <form className="admin-form search-form" onSubmit={saveSearchHistory}>
+              <h3>Lịch sử tìm kiếm</h3>
+              <div className="inline-group">
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Nhập từ khóa tìm kiếm..." />
+                <button type="submit" className="primary-btn">Lưu tìm kiếm</button>
+              </div>
+            </form>
+
+            {profileMessage && <div className="admin-message">{profileMessage}</div>}
+
+            <div className="admin-list">
+              <h3>Gần đây</h3>
+              {searchHistory.length === 0 ? <p>Chưa có lịch sử tìm kiếm.</p> : searchHistory.map((item) => (
+                <div className="list-item" key={item.id || `${item.query}-${item.created_at}`}>
+                  <div>
+                    <strong>{item.query}</strong>
+                    <p>{item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : 'Mới nhất'}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}
