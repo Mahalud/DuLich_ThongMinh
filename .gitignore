@@ -1,30 +1,46 @@
-# Byte-compiled / optimized / DLL files
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/build/
+
+# Python / backend
+backend/venv/
+backend/.venv/
 __pycache__/
-*.py[codz]
-*$py.class
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+ENV/
 
-# C extensions
-*.so
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
 
-# Distribution / packaging
-.Python
+# Docker / env
+.env
+.env.*
+
+# Build / cache
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+.coverage
+.pytest_cache/
+.mypy_cache/
+.pytype/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Project-specific
+backend/.env
+backend/db.sqlite3
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
