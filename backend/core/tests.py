@@ -334,3 +334,30 @@ class BookingLogicTests(TestCase):
         self.assertIn('distance_km', body)
         self.assertIn('duration_minutes', body)
         self.assertIn('google_maps_url', body)
+
+    def test_booking_cancel_and_review_endpoints(self):
+        client = APIClient()
+        booking = Booking.objects.create(
+            user=self.user,
+            room_type=self.room_type,
+            check_in='2026-10-10',
+            check_out='2026-10-12',
+            guest_phone='0901234567',
+        )
+
+        cancel_response = client.post(f'/api/bookings/{booking.id}/cancel/', {
+            'refund_amount': 1500000,
+        }, format='json')
+        self.assertEqual(cancel_response.status_code, 200)
+        self.assertEqual(cancel_response.json()['status'], 'cancelled')
+        self.assertEqual(cancel_response.json()['refund_amount'], 1500000)
+
+        review_response = client.post('/api/reviews/', {
+            'accommodation': self.accommodation.id,
+            'user': self.user.id,
+            'rating': 5,
+            'comment': 'Chỗ ở rất đẹp, sẽ quay lại.',
+        }, format='json')
+
+        self.assertEqual(review_response.status_code, 201)
+        self.assertEqual(review_response.json()['rating'], 5)

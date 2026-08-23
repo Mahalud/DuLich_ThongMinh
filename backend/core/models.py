@@ -104,6 +104,7 @@ class Booking(models.Model):
     check_out = models.DateField()
     guest_phone = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=0, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -173,6 +174,26 @@ class Booking(models.Model):
         ).count()
         return overlap_count < room_type.stock
 
+    def cancel_booking(self, refund_amount=0):
+        self.status = 'cancelled'
+        self.refund_amount = refund_amount
+        self.save(update_fields=['status', 'refund_amount'])
+        return self
+
     def __str__(self):
         return f'{self.user.username} - {self.room_type}'
+
+
+class AccommodationReview(models.Model):
+    accommodation = models.ForeignKey(Accommodation, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
+    rating = models.PositiveSmallIntegerField(default=5)
+    comment = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user.username} review for {self.accommodation.name}'
 

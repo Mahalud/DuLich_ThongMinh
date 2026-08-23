@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Accommodation, Booking, Destination, RoomType, SearchHistory, UserProfile
+from .models import Accommodation, Booking, Destination, RoomType, SearchHistory, UserProfile, AccommodationReview
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -67,12 +67,20 @@ class BookingSerializer(serializers.ModelSerializer):
             'guest_phone',
             'decrypted_phone',
             'status',
+            'refund_amount',
             'created_at',
         ]
-        read_only_fields = ['id', 'decrypted_phone', 'created_at', 'status']
+        read_only_fields = ['id', 'decrypted_phone', 'created_at', 'status', 'refund_amount']
 
     def get_decrypted_phone(self, obj):
         return obj.decrypt_guest_phone()
+
+
+class AccommodationReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AccommodationReview
+        fields = ['id', 'accommodation', 'user', 'rating', 'comment', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
 class SearchHistorySerializer(serializers.ModelSerializer):

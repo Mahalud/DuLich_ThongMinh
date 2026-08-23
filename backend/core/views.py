@@ -13,8 +13,11 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import Accommodation, Booking, Destination, RoomType, SearchHistory, UserProfile
+from django.core.mail import send_mail
+
+from .models import Accommodation, AccommodationReview, Booking, Destination, RoomType, SearchHistory, UserProfile
 from .serializers import (
+    AccommodationReviewSerializer,
     AccommodationSerializer,
     BookingSerializer,
     DestinationSerializer,
@@ -381,6 +384,17 @@ def payment_return(request):
     if status_value == 'success':
         booking.status = 'confirmed'
         booking.save(update_fields=['status'])
+        if booking.user.email:
+            try:
+                send_mail(
+                    'Xác nhận đặt phòng thành công',
+                    f'Xin chào {booking.user.username}, đặt phòng của bạn đã được xác nhận cho {booking.room_type.name} từ {booking.check_in} đến {booking.check_out}.',
+                    settings.EMAIL_HOST_USER if hasattr(settings, 'EMAIL_HOST_USER') else 'noreply@example.com',
+                    [booking.user.email],
+                    fail_silently=True,
+                )
+            except Exception:
+                pass
         return Response({
             'success': True,
             'booking_id': booking.id,
@@ -396,6 +410,31 @@ def payment_return(request):
         'status': booking.status,
         'message': 'Thanh toán thất bại hoặc bị hủy.',
     }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def booking_cancel(request, booking_id):
+    try:
+        booking = Booking.objects.select_related('user', 'room_type').get(pk=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Không tìm thấy đặt phòng.'}, status=status.HTTP_404_NOT_FOUND)
+
+    refund_amount = int(request.data.get('refund_amount', 0) or 0)
+    if booking.status == 'cancelled':
+        return Response({
+            'booking_id': booking.id,
+            'status': booking.status,
+            'refund_amount': int(booking.refund_amount),
+            'message': 'Đặt phòng này đã bị hủy trước đó.',
+        })
+
+    booking.cancel_booking(refund_amount=refund_amount)
+    return Response({
+        'booking_id': booking.id,
+        'status': booking.status,
+        'refund_amount': int(booking.refund_amount),
+        'message': 'Đặt phòng đã được hủy và hoàn tiền theo yêu cầu.',
+    })
 
 
 @api_view(['GET'])
@@ -714,4 +753,20 @@ def search_history_view(request):
     if serializer.is_valid():
         history = serializer.save()
         return Response(SearchHistorySerializer(history).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'POST'])
+def review_list_create(request):
+    if request.method == 'GET':
+        accommodation_id = request.GET.get('accommodation')
+        queryset = AccommodationReview.objects.select_related('user', 'accommodation').all().order_by('-created_at')
+        if accommodation_id:
+            queryset = queryset.filter(accommodation_id=accommodation_id)
+        return Response(AccommodationReviewSerializer(queryset, many=True).data)
+
+    serializer = AccommodationReviewSerializer(data=request.data)
+    if serializer.is_valid():
+        review = serializer.save()
+        return Response(AccommodationReviewSerializer(review).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

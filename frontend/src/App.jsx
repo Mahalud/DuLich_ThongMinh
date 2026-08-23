@@ -81,6 +81,12 @@ function App() {
   const [profileMessage, setProfileMessage] = useState('')
   const [searchQuery, setSearchQuery] = useState('du lịch biển Phú Quốc')
   const [searchHistory, setSearchHistory] = useState([])
+  const [reviewForm, setReviewForm] = useState({
+    accommodation: '',
+    rating: '5',
+    comment: 'Chỗ ở rất đẹp, lịch trình ổn.',
+  })
+  const [reviews, setReviews] = useState([])
 
   const fetchRecommendations = async (payload) => {
     const params = new URLSearchParams({
@@ -663,6 +669,56 @@ function App() {
     }
   }
 
+  const loadReviews = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/api/reviews/`)
+      if (!response.ok) {
+        throw new Error('Không thể tải đánh giá chỗ ở')
+      }
+      const data = await response.json()
+      setReviews(data)
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  const submitReview = async (event) => {
+    event.preventDefault()
+    if (!currentUser) {
+      setProfileMessage('Vui lòng đăng nhập trước khi viết đánh giá.')
+      return
+    }
+
+    try {
+      const response = await fetch(`${backendUrl}/api/reviews/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accommodation: Number(reviewForm.accommodation || accommodations[0]?.id),
+          user: currentUser.id,
+          rating: Number(reviewForm.rating),
+          comment: reviewForm.comment,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.detail || 'Gửi đánh giá thất bại.')
+      }
+
+      const data = await response.json()
+      setReviews((current) => [data, ...current])
+      setReviewForm((current) => ({ ...current, comment: '', rating: '5' }))
+      setProfileMessage('Cảm ơn bạn đã đánh giá chỗ ở.')
+    } catch (err) {
+      setProfileMessage(err.message)
+    }
+  }
+
+  useEffect(() => {
+    loadReviews()
+  }, [])
+
   return (
     <div className="travel-app">
       <header className="topbar">
@@ -946,6 +1002,46 @@ function App() {
                   <div>
                     <strong>{item.query}</strong>
                     <p>{item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : 'Mới nhất'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <form className="admin-form review-form" onSubmit={submitReview}>
+              <h3>Đánh giá chỗ ở</h3>
+              <label>
+                Chỗ ở
+                <select name="accommodation" value={reviewForm.accommodation} onChange={(event) => setReviewForm((current) => ({ ...current, accommodation: event.target.value }))}>
+                  <option value="">-- Chọn chỗ ở --</option>
+                  {accommodations.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Số sao
+                <select name="rating" value={reviewForm.rating} onChange={(event) => setReviewForm((current) => ({ ...current, rating: event.target.value }))}>
+                  <option value="5">5 sao</option>
+                  <option value="4">4 sao</option>
+                  <option value="3">3 sao</option>
+                  <option value="2">2 sao</option>
+                  <option value="1">1 sao</option>
+                </select>
+              </label>
+              <label>
+                Nhận xét
+                <textarea name="comment" rows="3" value={reviewForm.comment} onChange={(event) => setReviewForm((current) => ({ ...current, comment: event.target.value }))} />
+              </label>
+              <button type="submit" className="primary-btn">Gửi đánh giá</button>
+            </form>
+
+            <div className="admin-list">
+              <h3>Đánh giá gần đây</h3>
+              {reviews.length === 0 ? <p>Chưa có đánh giá nào.</p> : reviews.map((item) => (
+                <div className="list-item" key={item.id || `${item.user}-${item.created_at}`}>
+                  <div>
+                    <strong>{item.rating} sao</strong>
+                    <p>{item.comment}</p>
                   </div>
                 </div>
               ))}
