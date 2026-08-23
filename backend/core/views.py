@@ -1,5 +1,6 @@
 import json
 import math
+import os
 from datetime import date
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -416,6 +417,131 @@ def route_planning(request):
         'google_maps_url': google_maps_url,
         'distance_label': f'{round(distance_km, 1)} km',
         'duration_label': f'{duration_minutes} phút',
+    })
+
+
+@api_view(['GET'])
+def recommendation_explanation(request):
+    preferences = request.GET.get('user_preferences', '')
+    budget_estimate = float(request.GET.get('budget_estimate', 0) or 0)
+    travel_date = request.GET.get('travel_date')
+    try:
+        travel_date = date.fromisoformat(travel_date) if travel_date else date.today()
+    except ValueError:
+        travel_date = date.today()
+
+    request_obj = request
+    query_params = request.GET
+    preferences = query_params.get('user_preferences', '')
+    budget_estimate = float(query_params.get('budget_estimate', 0) or 0)
+    latitude = float(query_params.get('latitude', 0) or 0)
+    longitude = float(query_params.get('longitude', 0) or 0)
+    travel_date = query_params.get('travel_date')
+    top_n = int(query_params.get('top_n', 5) or 5)
+
+    try:
+        travel_date = date.fromisoformat(travel_date) if travel_date else date.today()
+    except ValueError:
+        travel_date = date.today()
+
+    preference_vectors = _build_vector(preferences, preferences.replace(',', ' '))
+    all_destinations = Destination.objects.all().order_by('-rating')
+    destination_results = []
+
+    for destination in all_destinations:
+        destination_text = ' '.join([
+            destination.name,
+            destination.description,
+            destination.category,
+        ])
+        destination_vector = _build_vector(destination_text)
+        preference_score = _cosine_similarity(preference_vectors, destination_vector)
+        weather_score = _weather_score_for_day(destination.latitude, travel_date)
+
+        room_prices = list(RoomType.objects.filter(
+            accommodation__latitude__isnull=False,
+            accommodation__longitude__isnull=False,
+        ).values_list('base_price', flat=True)[:10])
+        if room_prices:
+            estimated_cost = sum(room_prices) / len(room_prices)
+        else:
+            category_factor = {'biển': 1800000, 'núi': 1500000, 'thành phố': 2000000, 'ẩm thực': 1300000}.get(destination.category, 1500000)
+            estimated_cost = category_factor
+
+        budget_score = _budget_score(estimated_cost, budget_estimate or estimated_cost)
+        distance = _haversine_km(latitude, longitude, destination.latitude, destination.longitude)
+        distance_score = 1 / (1 + distance / 80)
+        final_score = (0.4 * preference_score) + (0.25 * weather_score) + (0.2 * budget_score) + (0.15 * distance_score)
+
+        destination_results.append({
+            'id': destination.id,
+            'name': destination.name,
+            'description': destination.description,
+            'category': destination.category,
+            'rating': destination.rating,
+            'latitude': destination.latitude,
+            'longitude': destination.longitude,
+            'distance_km': round(distance, 1),
+            'estimated_cost': int(estimated_cost),
+            'preference_score': round(preference_score, 4),
+            'weather_score': round(weather_score, 4),
+            'budget_score': round(budget_score, 4),
+            'distance_score': round(distance_score, 4),
+            'score': round(final_score, 4),
+        })
+
+    results = sorted(destination_results, key=lambda item: item['score'], reverse=True)[:max(1, top_n)]
+    if not results:
+        return Response({'explanation': 'Không có điểm đến phù hợp cho tiêu chí hiện tại.', 'top_destination': None})
+
+    top_destination = results[0]
+    destination_name = top_destination.get('name', 'điểm đến được đề xuất')
+    budget_value = f'{int(budget_estimate):,} đ' if budget_estimate else 'ngân sách linh hoạt'
+    date_value = travel_date.strftime('%d/%m/%Y')
+    prompt = (
+        f'Người dùng ưu tiên: {preferences or "du lịch đa dạng"}. '
+        f'Ngân sách ước tính: {budget_value}. '
+        f'Ngày dự kiến đến: {date_value}. '
+        f'Điểm đến hàng đầu: {destination_name}. '
+        'Viết một đoạn giải thích ngắn gọn, thân thiện và cá nhân hóa bằng tiếng Việt, '
+        'không dài quá 2 câu, nhấn mạnh lý do phù hợp với sở thích và ngân sách.'
+    )
+
+    gemini_api_key = os.getenv('GEMINI_API_KEY')
+    if gemini_api_key:
+        try:
+            import requests
+            payload = {
+                'contents': [{
+                    'parts': [{'text': prompt}],
+                }],
+                'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 180},
+            }
+            response = requests.post(
+                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+                params={'key': gemini_api_key},
+                json=payload,
+                timeout=20,
+            )
+            if response.status_code == 200:
+                candidates = response.json().get('candidates', [])
+                if candidates:
+                    text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                    if text:
+                        return Response({
+                            'explanation': text.strip(),
+                            'top_destination': top_destination,
+                        })
+        except Exception:
+            pass
+
+    fallback = (
+        f'Bạn đang phù hợp với {destination_name} vì điểm đến này đồng bộ với sở thích của bạn, '
+        f'đảm bảo trải nghiệm du lịch tốt trong ngân sách khoảng {budget_value} và phù hợp với thời điểm {date_value}.'
+    )
+    return Response({
+        'explanation': fallback,
+        'top_destination': top_destination,
     })
 
 

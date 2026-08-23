@@ -97,6 +97,21 @@ class BookingLogicTests(TestCase):
         self.assertTrue(len(data['results']) >= 1)
         self.assertIn('score', data['results'][0])
 
+    def test_recommendation_explanation_endpoint_returns_personalized_summary(self):
+        client = APIClient()
+        response = client.get('/api/recommendations/explain/', {
+            'user_preferences': 'biển,ẩm thực',
+            'budget_estimate': 5000000,
+            'latitude': 12.25,
+            'longitude': 109.19,
+            'travel_date': '2026-09-12',
+            'top_n': 3,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('explanation', response.json())
+        self.assertIn('top_destination', response.json())
+
     def test_accommodation_api_lists_rooms(self):
         client = APIClient()
         response = client.get('/api/accommodations/')
