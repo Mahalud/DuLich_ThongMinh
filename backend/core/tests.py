@@ -251,6 +251,14 @@ class BookingLogicTests(TestCase):
         delete_response = client.delete(f'/api/admin/accommodations/{accommodation_id}/')
         self.assertEqual(delete_response.status_code, 204)
 
+    def test_unknown_api_path_returns_json_404(self):
+        client = APIClient()
+        response = client.get('/api/unknown-endpoint/')
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('detail', response.json())
+        self.assertIn('not found', str(response.json()['detail']).lower())
+
     def test_seed_real_travel_data_command_creates_real_destinations(self):
         call_command('seed_real_travel_data')
 

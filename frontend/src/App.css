@@ -576,3 +576,90 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 640px) {
+  .travel-app {
+    min-width: 320px;
+  }
+
+  .topbar {
+    padding: 18px 14px 12px;
+  }
+
+  .brand {
+    width: 100%;
+    text-align: center;
+  }
+
+  .topbar nav {
+    gap: 8px;
+  }
+
+  .nav-button,
+  .primary-btn,
+  .secondary-btn,
+  .danger-btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .hero,
+  .features,
+  .recommend,
+  .profile-panel,
+  .admin-panel {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2.2rem, 9vw, 3rem);
+  }
+
+  .highlight-list {
+    gap: 10px;
+  }
+
+  .hero-actions,
+  .card-actions,
+  .form-actions,
+  .list-actions,
+  .chat-input-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .recommend-form,
+  .booking-form,
+  .admin-form,
+  .profile-grid,
+  .admin-grid,
+  .feature-grid,
+  .destination-grid,
+  .inline-group {
+    grid-template-columns: 1fr;
+  }
+
+  .mini-card,
+  .feature-grid article,
+  .destination-card,
+  .admin-form,
+  .admin-list,
+  .profile-grid,
+  .list-item,
+  .booking-panel {
+    border-radius: 16px;
+  }
+
+  .list-item,
+  .room-item,
+  .list-main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chat-message {
+    max-width: 92%;
+  }
+}

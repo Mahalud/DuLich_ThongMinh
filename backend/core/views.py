@@ -33,6 +33,19 @@ from .serializers import (
 User = get_user_model()
 
 
+def api_not_found(request, exception=None):
+    return JsonResponse({
+        'detail': 'API endpoint not found.',
+        'path': request.path,
+    }, status=404)
+
+
+def api_server_error(request):
+    return JsonResponse({
+        'detail': 'Internal server error.',
+    }, status=500)
+
+
 def health_check(request):
     return JsonResponse({
         'status': 'ok',

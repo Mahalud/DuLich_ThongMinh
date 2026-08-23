@@ -17,6 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from core.views import api_not_found, api_server_error
+
+handler404 = api_not_found
+handler500 = api_server_error
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('core.urls')),

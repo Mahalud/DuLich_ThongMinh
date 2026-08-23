@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 
 from .views import (
     accommodation_list,
@@ -8,6 +8,7 @@ from .views import (
     admin_destination_list_create,
     admin_room_type_detail,
     admin_room_type_list_create,
+    api_not_found,
     booking_cancel,
     booking_create,
     chat_message_list,
@@ -50,4 +51,5 @@ urlpatterns = [
     path('api/admin/accommodations/<int:accommodation_id>/', admin_accommodation_detail, name='admin_accommodation_detail'),
     path('api/admin/accommodations/<int:accommodation_id>/room-types/', admin_room_type_list_create, name='admin_room_type_list_create'),
     path('api/admin/room-types/<int:room_type_id>/', admin_room_type_detail, name='admin_room_type_detail'),
+    re_path(r'^api/.*$', api_not_found, name='api_fallback_404'),
 ]
