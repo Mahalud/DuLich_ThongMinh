@@ -274,3 +274,18 @@ class BookingLogicTests(TestCase):
 
         booking.refresh_from_db()
         self.assertEqual(booking.status, 'confirmed')
+
+    def test_route_planning_returns_distance_duration_and_maps_link(self):
+        client = APIClient()
+        response = client.get('/api/routes/', {
+            'start_lat': 12.25,
+            'start_lng': 109.19,
+            'end_lat': 12.30,
+            'end_lng': 109.20,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn('distance_km', body)
+        self.assertIn('duration_minutes', body)
+        self.assertIn('google_maps_url', body)

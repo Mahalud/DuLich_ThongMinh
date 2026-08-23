@@ -391,6 +391,35 @@ def payment_return(request):
 
 
 @api_view(['GET'])
+def route_planning(request):
+    try:
+        start_lat = float(request.GET.get('start_lat', 0) or 0)
+        start_lng = float(request.GET.get('start_lng', 0) or 0)
+        end_lat = float(request.GET.get('end_lat', 0) or 0)
+        end_lng = float(request.GET.get('end_lng', 0) or 0)
+    except ValueError:
+        return Response({'error': 'start_lat, start_lng, end_lat, end_lng không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    distance_km = _haversine_km(start_lat, start_lng, end_lat, end_lng)
+    speed_kmh = 35.0
+    duration_minutes = max(10, int((distance_km / speed_kmh) * 60))
+    google_maps_url = (
+        'https://www.google.com/maps/dir/?api=1'
+        f'&origin={start_lat},{start_lng}'
+        f'&destination={end_lat},{end_lng}'
+        '&travelmode=driving'
+    )
+
+    return Response({
+        'distance_km': round(distance_km, 1),
+        'duration_minutes': duration_minutes,
+        'google_maps_url': google_maps_url,
+        'distance_label': f'{round(distance_km, 1)} km',
+        'duration_label': f'{duration_minutes} phút',
+    })
+
+
+@api_view(['GET'])
 def weather_forecast(request):
     try:
         latitude = float(request.GET.get('latitude', 0) or 0)

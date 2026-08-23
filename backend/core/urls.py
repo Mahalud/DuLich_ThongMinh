@@ -17,6 +17,7 @@ from .views import (
     profile_detail,
     recommendation_view,
     register_user,
+    route_planning,
     weather_forecast,
 )
 
@@ -28,6 +29,7 @@ urlpatterns = [
     path('api/bookings/', booking_create, name='booking_create'),
     path('api/payments/init/', payment_init, name='payment_init'),
     path('api/payments/return/', payment_return, name='payment_return'),
+    path('api/routes/', route_planning, name='route_planning'),
     path('api/weather/', weather_forecast, name='weather_forecast'),
     path('api/auth/register/', register_user, name='register_user'),
     path('api/auth/login/', login_user, name='login_user'),
