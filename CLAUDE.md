@@ -7,6 +7,7 @@
 > của mỗi phiên làm việc mới.
 
 ## 1. Giới thiệu đề tài
+
 - **Tên đề tài:** Website gợi ý du lịch thông minh
 - **Loại:** Đồ án chuyên ngành (môn học, KHÔNG phải đồ án tốt nghiệp), ngành Công nghệ phần mềm
 - **Trường:** Đại học Tài nguyên và Môi trường TP.HCM, Khoa CNTT
@@ -15,6 +16,7 @@
   mọi thứ code ra phải khớp với đề cương đã nộp, không tự ý thêm/bớt phạm vi lớn.
 
 ## 2. Stack công nghệ
+
 - **Backend:** Python, Django, Django REST Framework
 - **Frontend:** React (khởi tạo bằng Vite)
 - **CSDL:** PostgreSQL (tạo qua Docker, biến môi trường `POSTGRES_DB`, KHÔNG gõ tay `CREATE DATABASE`)
@@ -44,6 +46,7 @@
 13. Trang quản trị: xây bằng **React riêng** (không dùng giao diện Django admin mặc định làm giao diện chính thức để demo — vì không đồng bộ style với phần người dùng); Django admin vẫn giữ bật ngầm chỉ để tiện nhập nhanh dữ liệu mẫu lúc chuẩn bị
 
 ## 4. Kiến trúc & nguyên tắc kỹ thuật cần nhớ
+
 - Backend và frontend giao tiếp qua REST API (Django REST Framework)
 - Các tác vụ chậm (gọi API thời tiết, tính embedding, gọi LLM) chạy bất đồng bộ qua Celery + Redis
 - Kết quả dự báo thời tiết được cache trong Redis theo (địa điểm, ngày) để giảm số lần gọi API ngoài
@@ -71,12 +74,14 @@ Thuật toán trọng tâm: **Weighted Sum Model** (mô hình tổng trọng s�
 Sau khi có kết quả, gọi **Gemini API** sinh đoạn giải thích cá nhân hóa ngắn cho gợi ý hàng đầu.
 
 **Thuật toán phụ (đặt phòng):**
+
 - Kiểm tra phòng trống: `Trùng lịch nếu (NgayNhan_moi < NgayTra_cu) VÀ (NgayNhan_cu < NgayTra_moi)`; còn trống nếu số đơn chồng lấn < số lượng phòng tối đa của loại phòng
 - Mã hóa SĐT: Fernet/AES trước khi lưu
 
-## 6. Phần MỞ RỘNG — chỉ làm nếu còn dư thời gian, KHÔNG bắt buộc, không ảnh hưởng điểm nếu chưa kịp
+## 6. Phần MỞ RỘNG — chỉ làm nếu còn dư thời gian, không ảnh hưởng điểm nếu chưa kịp
 
 Thứ tự ưu tiên nếu có thời gian dư (làm từ trên xuống):
+
 1. **Chat realtime** giữa người dùng và quản trị viên — dùng Django Channels + Redis (GVHD đánh giá cao ý này, ưu tiên làm trước các mục dưới nếu có thời gian) — LƯU Ý: cần WebSocket/ASGI, kỹ thuật khác hẳn REST thông thường, cần thời gian học/thử nghiệm riêng
 2. IPN (webhook xác nhận thanh toán song song từ cổng thanh toán, cần server có địa chỉ public)
 3. Hủy đơn kèm hoàn tiền qua sandbox
@@ -86,6 +91,7 @@ Thứ tự ưu tiên nếu có thời gian dư (làm từ trên xuống):
 7. Gợi ý lịch trình nhiều điểm đến liên tiếp thay vì 1 điểm đến đơn lẻ
 
 ## 7. Những điều TUYỆT ĐỐI cần tránh (đã có lý do rõ ràng, đừng đổi lại)
+
 - ❌ Google Places / Google Maps Directions API — cần thẻ ngân hàng, dev không có thẻ dùng được quốc tế → dùng Nominatim + OpenRouteService thay thế
 - ❌ Gemini model Pro — quota quá thấp cho việc test lặp lại → dùng Flash/Flash-Lite
 - ❌ Kết nối Booking.com/Agoda thật — các nền tảng này không cấp API cho sinh viên → tự quản lý dữ liệu chỗ ở riêng (demo)
@@ -94,6 +100,7 @@ Thứ tự ưu tiên nếu có thời gian dư (làm từ trên xuống):
 - ❌ Dùng Django admin mặc định làm giao diện quản trị chính thức để demo → phải là trang React tự xây
 
 ## 8. Nguyên tắc chung khi code cùng AI agent
+
 - Mọi đoạn code AI viết ra, người dùng (Tiến) phải đọc hiểu được — vì GVHD có thể hỏi bất kỳ dòng nào lúc bảo vệ, "AI viết giúp" không phải câu trả lời chấp nhận được
 - Ưu tiên code đơn giản, dễ giải thích hơn là code "khôn khéo" nhưng khó hiểu
 - Commit thường xuyên, message rõ ràng — không dồn hết vào 1 commit cuối kỳ

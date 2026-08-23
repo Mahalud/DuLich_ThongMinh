@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Accommodation, Booking, Destination, RoomType, SearchHistory, UserProfile, AccommodationReview
+from .models import Accommodation, AccommodationReview, Booking, ChatMessage, Destination, RoomType, SearchHistory, UserProfile
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -87,4 +87,11 @@ class SearchHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = SearchHistory
         fields = ['id', 'user', 'query', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatMessage
+        fields = ['id', 'sender', 'receiver', 'content', 'created_at']
         read_only_fields = ['id', 'created_at']

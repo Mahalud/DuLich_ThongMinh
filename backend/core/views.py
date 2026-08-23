@@ -5,6 +5,7 @@ from datetime import date
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.db import transaction
 from django.db.models import Q
@@ -15,11 +16,12 @@ from rest_framework.response import Response
 
 from django.core.mail import send_mail
 
-from .models import Accommodation, AccommodationReview, Booking, Destination, RoomType, SearchHistory, UserProfile
+from .models import Accommodation, AccommodationReview, Booking, ChatMessage, Destination, RoomType, SearchHistory, UserProfile
 from .serializers import (
     AccommodationReviewSerializer,
     AccommodationSerializer,
     BookingSerializer,
+    ChatMessageSerializer,
     DestinationSerializer,
     RoomTypeSerializer,
     SearchHistorySerializer,
@@ -753,6 +755,27 @@ def search_history_view(request):
     if serializer.is_valid():
         history = serializer.save()
         return Response(SearchHistorySerializer(history).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'POST'])
+def chat_message_list(request):
+    user_id = request.GET.get('user_id') or request.data.get('user_id')
+    receiver_id = request.GET.get('receiver_id') or request.data.get('receiver_id')
+
+    if request.method == 'GET':
+        queryset = ChatMessage.objects.select_related('sender', 'receiver').all().order_by('created_at')
+        if user_id and receiver_id:
+            queryset = queryset.filter(
+                (Q(sender_id=user_id) & Q(receiver_id=receiver_id)) |
+                (Q(sender_id=receiver_id) & Q(receiver_id=user_id))
+            )
+        return Response(ChatMessageSerializer(queryset, many=True).data)
+
+    serializer = ChatMessageSerializer(data=request.data)
+    if serializer.is_valid():
+        message = serializer.save()
+        return Response(ChatMessageSerializer(message).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

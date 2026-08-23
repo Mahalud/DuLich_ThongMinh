@@ -1,4 +1,5 @@
 import os
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -334,6 +335,43 @@ class BookingLogicTests(TestCase):
         self.assertIn('distance_km', body)
         self.assertIn('duration_minutes', body)
         self.assertIn('google_maps_url', body)
+
+    def test_payment_return_sends_confirmation_email(self):
+        client = APIClient()
+        booking = Booking.objects.create(
+            user=self.user,
+            room_type=self.room_type,
+            check_in='2026-09-15',
+            check_out='2026-09-18',
+            guest_phone='0901234567',
+        )
+
+        with patch('core.views.send_mail') as mock_send_mail:
+            response = client.get('/api/payments/return/', {
+                'booking_id': booking.id,
+                'status': 'success',
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertTrue(mock_send_mail.called)
+
+    def test_chat_messages_api_exposes_message_history(self):
+        client = APIClient()
+        admin_user = User.objects.create_user(username='admin_chat', email='admin@example.com', password='secret123')
+
+        response = client.post('/api/chat/messages/', {
+            'sender': self.user.id,
+            'receiver': admin_user.id,
+            'content': 'Xin chào quản trị viên, tôi cần hỗ trợ đặt phòng.',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIn('content', response.json())
+
+        history_response = client.get(f'/api/chat/messages/?user_id={self.user.id}&receiver_id={admin_user.id}')
+        self.assertEqual(history_response.status_code, 200)
+        self.assertTrue(len(history_response.json()) >= 1)
 
     def test_booking_cancel_and_review_endpoints(self):
         client = APIClient()

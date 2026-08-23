@@ -740,7 +740,7 @@ function App() {
             Quản trị
           </button>
         </nav>
-        <button className="primary-btn">Đăng nhập</button>
+        <button type="button" className="primary-btn" onClick={() => setActiveTab('profile')}>Đăng nhập</button>
       </header>
 
       <main>

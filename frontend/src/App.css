@@ -1,44 +1,59 @@
 .travel-app {
   min-height: 100vh;
-  background: linear-gradient(135deg, #071a2f 0%, #0d263f 30%, #123858 100%);
+  background:
+    radial-gradient(circle at top left, rgba(28, 145, 201, 0.25), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.12), transparent 30%),
+    linear-gradient(135deg, #04141f 0%, #081d2d 28%, #0d2940 100%);
   color: #ecf8ff;
 }
 
 .topbar {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 22px 28px;
+  padding: 22px 28px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 20px;
 }
 
 .brand {
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.04em;
   color: #e6f7ff;
+  font-size: 1.15rem;
 }
 
 .topbar nav {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .nav-button {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 197, 255, 0.14);
   color: #d5ebff;
-  padding: 0.6rem 0.9rem;
+  padding: 0.7rem 1rem;
   border-radius: 999px;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+.nav-button:hover,
+.primary-btn:hover,
+.secondary-btn:hover,
+.danger-btn:hover {
+  transform: translateY(-1px);
 }
 
 .nav-button.active {
   background: rgba(56, 189, 248, 0.14);
   border-color: rgba(56, 189, 248, 0.35);
-  color: #c9f7ff;
+  color: #dff9ff;
+  box-shadow: 0 10px 25px rgba(14, 165, 233, 0.18);
 }
 
 .primary-btn,
@@ -46,32 +61,34 @@
 .danger-btn {
   border: none;
   border-radius: 999px;
-  padding: 0.85rem 1.5rem;
+  padding: 0.82rem 1.3rem;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .primary-btn {
-  background: linear-gradient(135deg, #38bdf8, #14b8a6);
-  color: #062137;
+  background: linear-gradient(135deg, #58d1ff 0%, #41d6c3 100%);
+  color: #05243b;
+  box-shadow: 0 12px 25px rgba(52, 211, 153, 0.2);
 }
 
 .secondary-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(148, 197, 255, 0.18);
   color: #ecf8ff;
 }
 
 .danger-btn {
   background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.28);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   color: #ffd4d4;
 }
 
 .hero {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 42px 28px 64px;
+  padding: 40px 28px 56px;
   display: grid;
   grid-template-columns: 1.3fr 0.7fr;
   gap: 32px;
@@ -85,7 +102,7 @@
   background: rgba(56, 189, 248, 0.15);
   color: #8fe3ff;
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -145,11 +162,11 @@
 }
 
 .mini-card {
-  background: rgba(14, 35, 58, 0.76);
-  border: 1px solid rgba(148, 197, 255, 0.18);
+  background: rgba(13, 31, 49, 0.78);
+  border: 1px solid rgba(148, 197, 255, 0.2);
   border-radius: 24px;
   padding: 22px 20px;
-  box-shadow: 0 20px 40px rgba(2, 8, 20, 0.28);
+  box-shadow: 0 20px 40px rgba(2, 8, 20, 0.3);
 }
 
 .card-main {
@@ -200,6 +217,7 @@
 
 .features,
 .recommend,
+.profile-panel,
 .admin-panel {
   max-width: 1200px;
   margin: 0 auto;
@@ -231,7 +249,8 @@
 .destination-card,
 .admin-form,
 .admin-list,
-.list-item {
+.list-item,
+.profile-grid {
   background: rgba(9, 26, 42, 0.68);
   border: 1px solid rgba(148, 197, 255, 0.18);
   border-radius: 20px;
@@ -240,6 +259,7 @@
 .feature-grid article,
 .destination-card {
   padding: 24px 20px;
+  box-shadow: 0 12px 24px rgba(3, 10, 20, 0.18);
 }
 
 .feature-grid article h3,
@@ -280,6 +300,7 @@
   border-radius: 20px;
   padding: 20px;
   margin-bottom: 24px;
+  box-shadow: 0 20px 30px rgba(0, 0, 0, 0.12);
 }
 
 .recommend-form label,
@@ -294,13 +315,26 @@
 .recommend-form input,
 .admin-form input,
 .admin-form textarea,
-.admin-form select {
+.admin-form select,
+.booking-form select,
+.booking-form input {
   border: 1px solid rgba(148, 197, 255, 0.2);
   border-radius: 12px;
   background: rgba(14, 35, 58, 0.85);
   color: #f2fbff;
   padding: 0.8rem 0.9rem;
   font: inherit;
+  outline: none;
+}
+
+.recommend-form input:focus,
+.admin-form input:focus,
+.admin-form textarea:focus,
+.admin-form select:focus,
+.booking-form select:focus,
+.booking-form input:focus {
+  border-color: rgba(88, 209, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(88, 209, 255, 0.12);
 }
 
 .recommend-form .primary-btn {
@@ -337,6 +371,7 @@
   border: 1px solid rgba(148, 197, 255, 0.16);
   border-radius: 20px;
   padding: 20px;
+  box-shadow: 0 20px 30px rgba(0, 0, 0, 0.12);
 }
 
 .booking-form {
@@ -352,16 +387,6 @@
   color: #e2f6ff;
 }
 
-.booking-form select,
-.booking-form input {
-  border: 1px solid rgba(148, 197, 255, 0.2);
-  border-radius: 12px;
-  background: rgba(14, 35, 58, 0.85);
-  color: #f2fbff;
-  padding: 0.8rem 0.9rem;
-  font: inherit;
-}
-
 .booking-form .primary-btn {
   align-self: end;
   min-height: 48px;
@@ -370,6 +395,14 @@
 .booking-message {
   margin-bottom: 16px;
   color: #d7fbe0;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 22px;
+  margin-bottom: 24px;
+  padding: 20px;
 }
 
 .admin-grid {
@@ -456,11 +489,16 @@
   margin-top: 8px;
 }
 
+.search-form .inline-group {
+  grid-template-columns: 1fr auto;
+}
+
 @media (max-width: 900px) {
   .topbar,
   .hero,
   .features,
   .recommend,
+  .profile-panel,
   .admin-panel {
     padding-left: 18px;
     padding-right: 18px;
@@ -478,6 +516,7 @@
   }
 
   .hero,
+  .profile-grid,
   .admin-grid {
     grid-template-columns: 1fr;
   }
