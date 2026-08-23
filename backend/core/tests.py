@@ -174,6 +174,36 @@ class BookingLogicTests(TestCase):
         self.assertEqual(profile_response.status_code, 200)
         self.assertEqual(profile_response.json()['username'], 'newtraveler')
 
+    def test_profile_update_and_search_history_endpoints(self):
+        client = APIClient()
+        register_response = client.post('/api/auth/register/', {
+            'username': 'historyuser',
+            'email': 'historyuser@example.com',
+            'password': 'StrongPass123',
+        }, format='json')
+        user_id = register_response.json()['id']
+
+        profile_update_response = client.patch(f'/api/profile/{user_id}/', {
+            'travel_preferences': ['biển', 'núi'],
+            'budget_estimate': 7000000,
+            'free_text': 'Muốn nghỉ biển và leo núi',
+        }, format='json')
+
+        self.assertEqual(profile_update_response.status_code, 200)
+        self.assertEqual(profile_update_response.json()['travel_preferences'], ['biển', 'núi'])
+
+        search_response = client.post('/api/search-history/', {
+            'user_id': user_id,
+            'query': 'du lịch biển Phú Quốc',
+        }, format='json')
+
+        self.assertEqual(search_response.status_code, 201)
+        self.assertEqual(search_response.json()['query'], 'du lịch biển Phú Quốc')
+
+        list_response = client.get(f'/api/search-history/?user_id={user_id}')
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(len(list_response.json()) >= 1)
+
     def test_admin_destination_crud_flow(self):
         client = APIClient()
         create_response = client.post('/api/admin/destinations/', {

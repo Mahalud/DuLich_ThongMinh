@@ -19,6 +19,7 @@ from .views import (
     recommendation_view,
     register_user,
     route_planning,
+    search_history_view,
     weather_forecast,
 )
 
@@ -36,6 +37,7 @@ urlpatterns = [
     path('api/auth/register/', register_user, name='register_user'),
     path('api/auth/login/', login_user, name='login_user'),
     path('api/profile/<int:user_id>/', profile_detail, name='profile_detail'),
+    path('api/search-history/', search_history_view, name='search_history_view'),
     path('api/admin/destinations/', admin_destination_list_create, name='admin_destination_list_create'),
     path('api/admin/destinations/<int:destination_id>/', admin_destination_detail, name='admin_destination_detail'),
     path('api/admin/accommodations/', admin_accommodation_list_create, name='admin_accommodation_list_create'),

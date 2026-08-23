@@ -13,8 +13,15 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import Accommodation, Booking, Destination, RoomType, UserProfile
-from .serializers import AccommodationSerializer, BookingSerializer, DestinationSerializer, RoomTypeSerializer
+from .models import Accommodation, Booking, Destination, RoomType, SearchHistory, UserProfile
+from .serializers import (
+    AccommodationSerializer,
+    BookingSerializer,
+    DestinationSerializer,
+    RoomTypeSerializer,
+    SearchHistorySerializer,
+    UserProfileSerializer,
+)
 
 User = get_user_model()
 
@@ -655,7 +662,7 @@ def login_user(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PATCH'])
 def profile_detail(request, user_id):
     try:
         user = User.objects.get(pk=user_id)
@@ -663,6 +670,22 @@ def profile_detail(request, user_id):
         return Response({'error': 'Không tìm thấy người dùng.'}, status=status.HTTP_404_NOT_FOUND)
 
     profile, _ = UserProfile.objects.get_or_create(user=user)
+
+    if request.method == 'PATCH':
+        serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            profile.refresh_from_db()
+            return Response({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'travel_preferences': profile.travel_preferences,
+                'budget_estimate': str(profile.budget_estimate),
+                'free_text': profile.free_text,
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     return Response({
         'id': user.id,
         'username': user.username,
@@ -671,3 +694,24 @@ def profile_detail(request, user_id):
         'budget_estimate': str(profile.budget_estimate),
         'free_text': profile.free_text,
     })
+
+
+@api_view(['GET', 'POST'])
+def search_history_view(request):
+    user_id = request.GET.get('user_id') or request.data.get('user_id')
+
+    if request.method == 'GET':
+        queryset = SearchHistory.objects.select_related('user').all().order_by('-created_at')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        return Response(SearchHistorySerializer(queryset, many=True).data)
+
+    payload = request.data.copy()
+    if 'user' not in payload and 'user_id' in payload:
+        payload['user'] = payload['user_id']
+
+    serializer = SearchHistorySerializer(data=payload)
+    if serializer.is_valid():
+        history = serializer.save()
+        return Response(SearchHistorySerializer(history).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
