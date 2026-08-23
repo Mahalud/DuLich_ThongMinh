@@ -324,6 +324,54 @@
   font-size: 0.82rem;
 }
 
+.card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.booking-panel {
+  margin-top: 24px;
+  background: rgba(8, 23, 37, 0.7);
+  border: 1px solid rgba(148, 197, 255, 0.16);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+.booking-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.booking-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #e2f6ff;
+}
+
+.booking-form select,
+.booking-form input {
+  border: 1px solid rgba(148, 197, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(14, 35, 58, 0.85);
+  color: #f2fbff;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+}
+
+.booking-form .primary-btn {
+  align-self: end;
+  min-height: 48px;
+}
+
+.booking-message {
+  margin-bottom: 16px;
+  color: #d7fbe0;
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));

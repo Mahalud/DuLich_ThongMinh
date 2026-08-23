@@ -57,6 +57,15 @@ function App() {
   const [roomTypeEditId, setRoomTypeEditId] = useState(null)
   const [selectedAccommodationId, setSelectedAccommodationId] = useState(null)
   const [roomTypesByAccommodation, setRoomTypesByAccommodation] = useState({})
+  const [bookingForm, setBookingForm] = useState({
+    accommodationId: '',
+    roomTypeId: '',
+    check_in: '2026-09-12',
+    check_out: '2026-09-15',
+    guest_phone: '0901234567',
+  })
+  const [bookingMessage, setBookingMessage] = useState('')
+  const [bookingLoading, setBookingLoading] = useState(false)
   const [adminMessage, setAdminMessage] = useState('')
 
   const fetchRecommendations = async (payload) => {
@@ -83,6 +92,29 @@ function App() {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadBookingCatalog = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/api/accommodations/`)
+      if (!response.ok) {
+        throw new Error('Không thể tải danh sách chỗ ở cho đặt phòng')
+      }
+
+      const data = await response.json()
+      setAccommodations(data)
+      if (data.length > 0) {
+        const firstAccommodationId = data[0].id
+        const firstRoomTypeId = data[0].room_types?.[0]?.id || ''
+        setBookingForm((current) => ({
+          ...current,
+          accommodationId: String(firstAccommodationId),
+          roomTypeId: String(firstRoomTypeId),
+        }))
+      }
+    } catch (err) {
+      setBookingMessage(err.message)
     }
   }
 
@@ -121,6 +153,7 @@ function App() {
 
   useEffect(() => {
     fetchRecommendations(form)
+    loadBookingCatalog()
   }, [])
 
   useEffect(() => {
@@ -152,6 +185,11 @@ function App() {
   const handleRoomTypeField = (event) => {
     const { name, value } = event.target
     setRoomTypeForm((current) => ({ ...current, [name]: value }))
+  }
+
+  const handleBookingField = (event) => {
+    const { name, value } = event.target
+    setBookingForm((current) => ({ ...current, [name]: value }))
   }
 
   const submitDestination = async (event) => {
@@ -350,6 +388,101 @@ function App() {
     })
   }
 
+  const selectedBookingAccommodation = accommodations.find((item) => String(item.id) === String(bookingForm.accommodationId)) || null
+  const availableBookingRooms = selectedBookingAccommodation?.room_types || []
+
+  const handleBookingSubmit = async (event) => {
+    event.preventDefault()
+    setBookingMessage('')
+    setBookingLoading(true)
+
+    try {
+      if (!bookingForm.accommodationId || !bookingForm.roomTypeId) {
+        throw new Error('Vui lòng chọn chỗ ở và loại phòng trước khi đặt.')
+      }
+
+      if (!bookingForm.check_in || !bookingForm.check_out || !bookingForm.guest_phone) {
+        throw new Error('Vui lòng điền đầy đủ ngày nhận/trả và số điện thoại.')
+      }
+
+      const room = availableBookingRooms.find((item) => String(item.id) === String(bookingForm.roomTypeId))
+      if (!room) {
+        throw new Error('Loại phòng không hợp lệ.')
+      }
+
+      const username = `demo_${Date.now()}`
+      const registerResponse = await fetch(`${backendUrl}/api/auth/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          email: `${username}@demo.local`,
+          password: 'DemoPass123!',
+        }),
+      })
+
+      if (!registerResponse.ok) {
+        const errorBody = await registerResponse.json().catch(() => ({}))
+        throw new Error(errorBody?.error || 'Không thể tạo tài khoản demo cho đặt phòng.')
+      }
+
+      const userData = await registerResponse.json()
+      const bookingResponse = await fetch(`${backendUrl}/api/bookings/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: userData.id,
+          room_type: Number(bookingForm.roomTypeId),
+          check_in: bookingForm.check_in,
+          check_out: bookingForm.check_out,
+          guest_phone: bookingForm.guest_phone,
+        }),
+      })
+
+      if (!bookingResponse.ok) {
+        const errorBody = await bookingResponse.json().catch(() => ({}))
+        throw new Error(errorBody?.non_field_errors?.[0] || errorBody?.error || 'Đặt phòng thất bại.')
+      }
+
+      const bookingData = await bookingResponse.json()
+      const paymentResponse = await fetch(`${backendUrl}/api/payments/init/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          booking_id: bookingData.id,
+          amount: Number(room.base_price),
+          return_url: 'http://localhost:5173/payment-return',
+        }),
+      })
+
+      if (!paymentResponse.ok) {
+        throw new Error('Khởi tạo thanh toán sandbox thất bại.')
+      }
+
+      const paymentData = await paymentResponse.json()
+      setBookingMessage('Thanh toán sandbox đang được chuyển hướng…')
+      window.location.href = paymentData.redirect_url
+    } catch (err) {
+      setBookingMessage(err.message)
+    } finally {
+      setBookingLoading(false)
+    }
+  }
+
+  const handleOpenRoute = async (destination) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/routes/?start_lat=${form.latitude}&start_lng=${form.longitude}&end_lat=${destination.latitude}&end_lng=${destination.longitude}`)
+      if (!response.ok) {
+        throw new Error('Không thể lấy thông tin chỉ đường.')
+      }
+
+      const data = await response.json()
+      window.open(data.google_maps_url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   return (
     <div className="travel-app">
       <header className="topbar">
@@ -490,8 +623,77 @@ function App() {
                     <span>Rating: {item.rating}</span>
                     <span>Chi phí: {Number(item.estimated_cost).toLocaleString()} đ</span>
                   </div>
+                  <div className="card-actions">
+                    <button type="button" className="primary-btn" onClick={() => handleOpenRoute(item)}>Chỉ đường</button>
+                    <button type="button" className="secondary-btn" onClick={() => {
+                      setBookingForm((current) => ({
+                        ...current,
+                        accommodationId: accommodations[0]?.id ? String(accommodations[0].id) : '',
+                        roomTypeId: accommodations[0]?.room_types?.[0]?.id ? String(accommodations[0].room_types[0].id) : '',
+                      }))
+                      setActiveTab('recommend')
+                    }}>Đặt phòng</button>
+                  </div>
                 </article>
               ))}
+            </div>
+
+            <div className="booking-panel">
+              <div className="section-head">
+                <span className="eyebrow dark">Đặt phòng demo</span>
+                <h3>Chọn phòng để thanh toán sandbox</h3>
+              </div>
+
+              {bookingMessage && <div className="booking-message">{bookingMessage}</div>}
+
+              <form className="booking-form" onSubmit={handleBookingSubmit}>
+                <label>
+                  Chỗ ở
+                  <select name="accommodationId" value={bookingForm.accommodationId} onChange={(event) => {
+                    const selectedId = event.target.value
+                    const selectedAccommodation = accommodations.find((item) => String(item.id) === String(selectedId))
+                    setBookingForm((current) => ({
+                      ...current,
+                      accommodationId: selectedId,
+                      roomTypeId: selectedAccommodation?.room_types?.[0]?.id ? String(selectedAccommodation.room_types[0].id) : '',
+                    }))
+                  }}>
+                    <option value="">-- Chọn chỗ ở --</option>
+                    {accommodations.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Loại phòng
+                  <select name="roomTypeId" value={bookingForm.roomTypeId} onChange={handleBookingField}>
+                    <option value="">-- Chọn loại phòng --</option>
+                    {availableBookingRooms.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name} · {Number(item.base_price).toLocaleString()} đ</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Ngày nhận
+                  <input name="check_in" type="date" value={bookingForm.check_in} onChange={handleBookingField} />
+                </label>
+
+                <label>
+                  Ngày trả
+                  <input name="check_out" type="date" value={bookingForm.check_out} onChange={handleBookingField} />
+                </label>
+
+                <label>
+                  Số điện thoại
+                  <input name="guest_phone" value={bookingForm.guest_phone} onChange={handleBookingField} />
+                </label>
+
+                <button type="submit" className="primary-btn" disabled={bookingLoading}>
+                  {bookingLoading ? 'Đang xử lý...' : 'Đặt phòng & thanh toán'}
+                </button>
+              </form>
             </div>
           </section>
         )}
