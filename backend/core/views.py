@@ -324,6 +324,72 @@ def booking_create(request):
     return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
 
 
+@api_view(['POST'])
+def payment_init(request):
+    booking_id = request.data.get('booking_id')
+    amount = request.data.get('amount', 0)
+    return_url = request.data.get('return_url') or 'http://localhost:5173/payment-return'
+
+    try:
+        booking = Booking.objects.get(pk=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Không tìm thấy đặt phòng.'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        amount_value = int(amount)
+    except (TypeError, ValueError):
+        return Response({'error': 'Số tiền thanh toán không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if amount_value <= 0:
+        return Response({'error': 'Số tiền thanh toán phải lớn hơn 0.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    params = urlencode({
+        'booking_id': booking.id,
+        'status': 'success',
+        'amount': amount_value,
+        'ref': f'BOOK-{booking.id}',
+    })
+    redirect_url = f'{return_url}?{params}'
+
+    return Response({
+        'booking_id': booking.id,
+        'amount': amount_value,
+        'status': 'pending',
+        'redirect_url': redirect_url,
+        'message': 'Đã khởi tạo thanh toán sandbox thành công.',
+    })
+
+
+@api_view(['GET'])
+def payment_return(request):
+    booking_id = request.GET.get('booking_id')
+    status_value = request.GET.get('status', 'failed')
+
+    try:
+        booking = Booking.objects.get(pk=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'success': False, 'error': 'Không tìm thấy đặt phòng.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if status_value == 'success':
+        booking.status = 'confirmed'
+        booking.save(update_fields=['status'])
+        return Response({
+            'success': True,
+            'booking_id': booking.id,
+            'status': booking.status,
+            'message': 'Thanh toán thành công. Đặt phòng đã được xác nhận.',
+        })
+
+    booking.status = 'cancelled'
+    booking.save(update_fields=['status'])
+    return Response({
+        'success': False,
+        'booking_id': booking.id,
+        'status': booking.status,
+        'message': 'Thanh toán thất bại hoặc bị hủy.',
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(['GET'])
 def weather_forecast(request):
     try:

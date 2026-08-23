@@ -244,3 +244,33 @@ class BookingLogicTests(TestCase):
         }, format='json')
         self.assertEqual(patch_response.status_code, 200)
         self.assertEqual(patch_response.json()['base_price'], 2600000)
+
+    def test_payment_init_and_return_flow(self):
+        client = APIClient()
+        booking = Booking.objects.create(
+            user=self.user,
+            room_type=self.room_type,
+            check_in='2026-09-15',
+            check_out='2026-09-18',
+            guest_phone='0901234567',
+        )
+
+        init_response = client.post('/api/payments/init/', {
+            'booking_id': booking.id,
+            'amount': 1500000,
+            'return_url': 'http://localhost:5173/payment-return',
+        }, format='json')
+
+        self.assertEqual(init_response.status_code, 200)
+        self.assertIn('redirect_url', init_response.json())
+
+        return_response = client.get('/api/payments/return/', {
+            'booking_id': booking.id,
+            'status': 'success',
+        })
+
+        self.assertEqual(return_response.status_code, 200)
+        self.assertTrue(return_response.json()['success'])
+
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, 'confirmed')
