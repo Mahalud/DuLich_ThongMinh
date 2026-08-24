@@ -119,6 +119,13 @@ class BookingLogicTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(isinstance(response.json(), list))
 
+    def test_destination_lookup_route_is_connected(self):
+        client = APIClient()
+        response = client.get('/api/destinations/lookup/', {'q': 'Nha Trang'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('results', response.json())
+
     def test_booking_api_rejects_overlapping_dates_when_stock_is_full(self):
         client = APIClient()
         Booking.objects.create(

@@ -15,10 +15,12 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from sentence_transformers.util import cos_sim
 
 from django.core.mail import send_mail
 
 from .models import Accommodation, AccommodationReview, Booking, ChatMessage, Destination, RoomType, SearchHistory, UserProfile
+from .embedding import encode_text
 from .serializers import (
     AccommodationReviewSerializer,
     AccommodationSerializer,
@@ -248,34 +250,6 @@ def admin_room_type_detail(request, room_type_id):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-def _normalize_tokens(value):
-    if not value:
-        return []
-    return [token.lower() for token in value.replace(',', ' ').replace('-', ' ').split() if token]
-
-
-def _build_vector(*parts):
-    tokens = []
-    for part in parts:
-        tokens.extend(_normalize_tokens(part))
-    vector = {}
-    for token in tokens:
-        vector[token] = vector.get(token, 0) + 1
-    return vector
-
-
-def _cosine_similarity(a, b):
-    all_tokens = set(a) | set(b)
-    if not all_tokens:
-        return 0.0
-    dot = sum(a.get(token, 0) * b.get(token, 0) for token in all_tokens)
-    norm_a = math.sqrt(sum(value * value for value in a.values()))
-    norm_b = math.sqrt(sum(value * value for value in b.values()))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
 def _haversine_km(lat1, lon1, lat2, lon2):
     radius = 6371.0
     lat1_r = math.radians(lat1)
@@ -302,16 +276,50 @@ def _member_trapezoid(value, left, peak_start, peak_end, right):
     return 0.0
 
 
-def _weather_score_for_day(destination_latitude, travel_date):
-    month = (travel_date.month if isinstance(travel_date, date) else date.today().month)
-    simulated_temp = 24 + math.sin((month - 1) / 12 * 2 * math.pi) * 8 + (destination_latitude / 30)
-    simulated_rain = 35 + abs(math.sin(month / 12 * 2 * math.pi)) * 45
-    simulated_wind = 18 + abs(math.cos(month / 12 * 2 * math.pi)) * 22
+def get_weather_score(latitude, longitude, target_date):
+    cache_key = f'weather:{latitude}:{longitude}:{target_date}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
 
-    temp_mem = _member_trapezoid(simulated_temp, 15, 24, 30, 40)
-    rain_mem = 1.0 - _member_trapezoid(simulated_rain, 0, 20, 50, 100)
-    wind_mem = 1.0 - _member_trapezoid(simulated_wind, 0, 10, 30, 60)
-    return 0.5 * temp_mem + 0.3 * rain_mem + 0.2 * wind_mem
+    params = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'daily': 'temperature_2m_max,precipitation_probability_max,wind_speed_10m_max',
+        'timezone': 'auto',
+        'forecast_days': 16,
+    }
+    url = 'https://api.open-meteo.com/v1/forecast?' + urlencode(params)
+    with urlopen(url, timeout=15) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+
+    daily = payload.get('daily', {})
+    dates = daily.get('time', [])
+    temps = daily.get('temperature_2m_max', [])
+    rain = daily.get('precipitation_probability_max', [])
+    winds = daily.get('wind_speed_10m_max', [])
+    if not dates:
+        raise ValueError('Không có dữ liệu thời tiết.')
+
+    index = dates.index(str(target_date)) if str(target_date) in dates else 0
+    temperature = float(temps[index]) if index < len(temps) and temps[index] is not None else 0.0
+    precipitation = float(rain[index]) if index < len(rain) and rain[index] is not None else 0.0
+    wind_speed = float(winds[index]) if index < len(winds) and winds[index] is not None else 0.0
+    temp_membership = _member_trapezoid(temperature, 15, 24, 30, 40)
+    rain_membership = max(0.0, min(1.0, 1 - (precipitation / 100)))
+    wind_membership = max(0.0, min(1.0, 1 - (wind_speed / 60)))
+    body = {
+        'date': str(target_date),
+        'temperature': round(temperature, 1),
+        'precipitation_probability': round(precipitation, 1),
+        'wind_speed': round(wind_speed, 1),
+        'weather_score': round(0.5 * temp_membership + 0.3 * rain_membership + 0.2 * wind_membership, 4),
+        'temperature_membership': round(temp_membership, 4),
+        'rain_membership': round(rain_membership, 4),
+        'wind_membership': round(wind_membership, 4),
+    }
+    cache.set(cache_key, body, timeout=3600)
+    return body
 
 
 def _budget_score(cost_estimate, budget_estimate):
@@ -322,21 +330,8 @@ def _budget_score(cost_estimate, budget_estimate):
     return max(0.0, 1 - ((cost_estimate - budget_estimate) / budget_estimate))
 
 
-@api_view(['GET'])
-def recommendation_view(request):
-    preferences = request.GET.get('user_preferences', '')
-    budget_estimate = float(request.GET.get('budget_estimate', 0) or 0)
-    latitude = float(request.GET.get('latitude', 0) or 0)
-    longitude = float(request.GET.get('longitude', 0) or 0)
-    travel_date = request.GET.get('travel_date')
-    top_n = int(request.GET.get('top_n', 5) or 5)
-
-    try:
-        travel_date = date.fromisoformat(travel_date) if travel_date else date.today()
-    except ValueError:
-        travel_date = date.today()
-
-    preference_vectors = _build_vector(preferences, preferences.replace(',', ' '))
+def _recommendation_results(preferences, budget_estimate, latitude, longitude, travel_date, top_n):
+    preference_vector = encode_text(preferences)
     all_destinations = Destination.objects.all().order_by('-rating')
 
     destination_results = []
@@ -346,9 +341,12 @@ def recommendation_view(request):
             destination.description,
             destination.category,
         ])
-        destination_vector = _build_vector(destination_text)
-        preference_score = _cosine_similarity(preference_vectors, destination_vector)
-        weather_score = _weather_score_for_day(destination.latitude, travel_date)
+        if destination.embedding_cache is None:
+            destination.embedding_cache = encode_text(destination_text)
+            Destination.objects.filter(pk=destination.pk).update(embedding_cache=destination.embedding_cache)
+        preference_score = float(cos_sim(preference_vector, destination.embedding_cache).item())
+        weather_data = get_weather_score(destination.latitude, destination.longitude, travel_date)
+        weather_score = weather_data['weather_score']
 
         room_prices = list(RoomType.objects.filter(
             accommodation__latitude__isnull=False,
@@ -383,8 +381,27 @@ def recommendation_view(request):
             'score': round(final_score, 4),
         })
 
-    destination_results = sorted(destination_results, key=lambda item: item['score'], reverse=True)
-    return Response({'results': destination_results[:max(1, top_n)]})
+    return sorted(destination_results, key=lambda item: item['score'], reverse=True)[:max(1, top_n)]
+
+
+@api_view(['GET'])
+def recommendation_view(request):
+    preferences = request.GET.get('user_preferences', '')
+    budget_estimate = float(request.GET.get('budget_estimate', 0) or 0)
+    latitude = float(request.GET.get('latitude', 0) or 0)
+    longitude = float(request.GET.get('longitude', 0) or 0)
+    travel_date = request.GET.get('travel_date')
+    top_n = int(request.GET.get('top_n', 5) or 5)
+    try:
+        travel_date = date.fromisoformat(travel_date) if travel_date else date.today()
+    except ValueError:
+        travel_date = date.today()
+
+    try:
+        results = _recommendation_results(preferences, budget_estimate, latitude, longitude, travel_date, top_n)
+    except Exception as exc:
+        return Response({'error': f'Không thể tạo gợi ý: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+    return Response({'results': results})
 
 
 @api_view(['POST'])
@@ -613,15 +630,6 @@ def route_planning(request):
 
 @api_view(['GET'])
 def recommendation_explanation(request):
-    preferences = request.GET.get('user_preferences', '')
-    budget_estimate = float(request.GET.get('budget_estimate', 0) or 0)
-    travel_date = request.GET.get('travel_date')
-    try:
-        travel_date = date.fromisoformat(travel_date) if travel_date else date.today()
-    except ValueError:
-        travel_date = date.today()
-
-    request_obj = request
     query_params = request.GET
     preferences = query_params.get('user_preferences', '')
     budget_estimate = float(query_params.get('budget_estimate', 0) or 0)
@@ -635,53 +643,10 @@ def recommendation_explanation(request):
     except ValueError:
         travel_date = date.today()
 
-    preference_vectors = _build_vector(preferences, preferences.replace(',', ' '))
-    all_destinations = Destination.objects.all().order_by('-rating')
-    destination_results = []
-
-    for destination in all_destinations:
-        destination_text = ' '.join([
-            destination.name,
-            destination.description,
-            destination.category,
-        ])
-        destination_vector = _build_vector(destination_text)
-        preference_score = _cosine_similarity(preference_vectors, destination_vector)
-        weather_score = _weather_score_for_day(destination.latitude, travel_date)
-
-        room_prices = list(RoomType.objects.filter(
-            accommodation__latitude__isnull=False,
-            accommodation__longitude__isnull=False,
-        ).values_list('base_price', flat=True)[:10])
-        if room_prices:
-            estimated_cost = sum(room_prices) / len(room_prices)
-        else:
-            category_factor = {'biển': 1800000, 'núi': 1500000, 'thành phố': 2000000, 'ẩm thực': 1300000}.get(destination.category, 1500000)
-            estimated_cost = category_factor
-
-        budget_score = _budget_score(estimated_cost, budget_estimate or estimated_cost)
-        distance = _haversine_km(latitude, longitude, destination.latitude, destination.longitude)
-        distance_score = 1 / (1 + distance / 80)
-        final_score = (0.4 * preference_score) + (0.25 * weather_score) + (0.2 * budget_score) + (0.15 * distance_score)
-
-        destination_results.append({
-            'id': destination.id,
-            'name': destination.name,
-            'description': destination.description,
-            'category': destination.category,
-            'rating': destination.rating,
-            'latitude': destination.latitude,
-            'longitude': destination.longitude,
-            'distance_km': round(distance, 1),
-            'estimated_cost': int(estimated_cost),
-            'preference_score': round(preference_score, 4),
-            'weather_score': round(weather_score, 4),
-            'budget_score': round(budget_score, 4),
-            'distance_score': round(distance_score, 4),
-            'score': round(final_score, 4),
-        })
-
-    results = sorted(destination_results, key=lambda item: item['score'], reverse=True)[:max(1, top_n)]
+    try:
+        results = _recommendation_results(preferences, budget_estimate, latitude, longitude, travel_date, top_n)
+    except Exception as exc:
+        return Response({'error': f'Không thể tạo gợi ý: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
     if not results:
         return Response({'explanation': 'Không có điểm đến phù hợp cho tiêu chí hiện tại.', 'top_destination': None})
 
@@ -746,63 +711,10 @@ def weather_forecast(request):
     except ValueError:
         return Response({'error': 'latitude, longitude và date không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    cache_key = f'weather:{latitude}:{longitude}:{target_date}'
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return Response(cached)
-
-    params = {
-        'latitude': latitude,
-        'longitude': longitude,
-        'daily': 'temperature_2m_max,precipitation_probability_max,wind_speed_10m_max',
-        'timezone': 'auto',
-        'forecast_days': 16,
-    }
-
-    url = 'https://api.open-meteo.com/v1/forecast?' + urlencode(params)
     try:
-        with urlopen(url, timeout=15) as response:
-            payload = json.loads(response.read().decode('utf-8'))
+        return Response(get_weather_score(latitude, longitude, target_date))
     except Exception as exc:
         return Response({'error': f'Không thể lấy dữ liệu thời tiết: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
-
-    daily = payload.get('daily', {})
-    dates = daily.get('time', [])
-    temps = daily.get('temperature_2m_max', [])
-    rain = daily.get('precipitation_probability_max', [])
-    winds = daily.get('wind_speed_10m_max', [])
-
-    if not dates:
-        return Response({'error': 'Không có dữ liệu thời tiết.'}, status=status.HTTP_404_NOT_FOUND)
-
-    index = 0
-    for i, value in enumerate(dates):
-        if value == str(target_date):
-            index = i
-            break
-    if index >= len(temps):
-        index = min(index, len(temps) - 1)
-
-    temperature = float(temps[index]) if index < len(temps) and temps[index] is not None else 0.0
-    precipitation = float(rain[index]) if index < len(rain) and rain[index] is not None else 0.0
-    wind_speed = float(winds[index]) if index < len(winds) and winds[index] is not None else 0.0
-
-    temp_membership = max(0.0, min(1.0, (temperature - 15) / (24 - 15) if 15 < temperature < 24 else 1.0 if 24 <= temperature <= 30 else (40 - temperature) / (40 - 30) if 30 < temperature < 40 else 0.0))
-    rain_membership = max(0.0, min(1.0, 1 - (precipitation / 100)))
-    wind_membership = max(0.0, min(1.0, 1 - (wind_speed / 60)))
-    weather_score = 0.5 * temp_membership + 0.3 * rain_membership + 0.2 * wind_membership
-    body = {
-        'date': str(target_date),
-        'temperature': round(temperature, 1),
-        'precipitation_probability': round(precipitation, 1),
-        'wind_speed': round(wind_speed, 1),
-        'weather_score': round(weather_score, 4),
-        'temperature_membership': round(temp_membership, 4),
-        'rain_membership': round(rain_membership, 4),
-        'wind_membership': round(wind_membership, 4),
-    }
-    cache.set(cache_key, body, timeout=3600)
-    return Response(body)
 
 
 @api_view(['POST'])

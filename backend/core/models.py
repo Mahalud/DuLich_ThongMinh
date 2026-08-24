@@ -58,7 +58,22 @@ class Destination(models.Model):
     longitude = models.FloatField(default=0.0)
     image_url = models.URLField(blank=True, default='')
     rating = models.FloatField(default=0.0)
+    embedding_cache = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        source_text = ' '.join([self.name, self.description, self.category])
+        should_refresh_embedding = self.embedding_cache is None
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values('name', 'description', 'category').first()
+            should_refresh_embedding = should_refresh_embedding or bool(previous and source_text != ' '.join([
+                previous['name'], previous['description'], previous['category'],
+            ]))
+        if should_refresh_embedding:
+            from .embedding import encode_text
+
+            self.embedding_cache = encode_text(source_text)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name

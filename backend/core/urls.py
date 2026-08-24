@@ -13,6 +13,7 @@ from .views import (
     booking_create,
     chat_message_list,
     destination_list,
+    destination_lookup,
     health_check,
     login_user,
     payment_init,
@@ -30,6 +31,7 @@ from .views import (
 urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('api/destinations/', destination_list, name='destination_list'),
+    path('api/destinations/lookup/', destination_lookup, name='destination_lookup'),
     path('api/accommodations/', accommodation_list, name='accommodation_list'),
     path('api/recommendations/', recommendation_view, name='recommendation_view'),
     path('api/recommendations/explain/', recommendation_explanation, name='recommendation_explanation'),
