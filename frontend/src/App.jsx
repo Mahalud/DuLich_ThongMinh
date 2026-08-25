@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { AirVent, Bath, MapPin, Paperclip, Send, Star, Waves, Wifi, WifiOff, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const highlights = [
@@ -9,6 +11,18 @@ const highlights = [
 ]
 
 const backendUrl = 'http://localhost:8000'
+const heroFallbackImage = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1800&q=85'
+
+const getCookie = (name) => document.cookie.split('; ').find((item) => item.startsWith(`${name}=`))?.split('=')[1] || ''
+
+const amenityIcon = (amenity) => {
+  const normalized = amenity.toLowerCase()
+  if (normalized.includes('wifi')) return <Wifi size={15} />
+  if (normalized.includes('điều hòa') || normalized.includes('may')) return <AirVent size={15} />
+  if (normalized.includes('bồn tắm')) return <Bath size={15} />
+  if (normalized.includes('biển')) return <Waves size={15} />
+  return <span aria-hidden="true">•</span>
+}
 
 const emptyDestinationForm = {
   name: '',
@@ -30,7 +44,12 @@ const emptyAccommodationForm = {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState('home')
+  const routeToTab = (pathname) => ({
+    '/': 'home', '/tinh-nang': 'features', '/goi-y': 'recommend', '/ho-so': 'profile',
+    '/chat': 'chat', '/quan-tri': 'admin', '/dang-nhap': 'login', '/dang-ky': 'register',
+    '/quen-mat-khau': 'forgot', '/dat-lai-mat-khau': 'reset', '/cam-on': 'thanks', '/payment-return': 'thanks',
+  }[pathname] || 'not-found')
+  const [activeTab, setActiveTab] = useState(() => routeToTab(window.location.pathname))
   const [form, setForm] = useState({
     user_preferences: 'biển,ẩm thực',
     budget_estimate: '6000000',
@@ -76,6 +95,14 @@ function App() {
   const [chatMessages, setChatMessages] = useState([])
   const [chatInput, setChatInput] = useState('')
   const [chatStatus, setChatStatus] = useState('')
+  const [chatConnected, setChatConnected] = useState(false)
+  const [chatAttachment, setChatAttachment] = useState(null)
+  const [chatPreviewUrl, setChatPreviewUrl] = useState('')
+  const [lightboxUrl, setLightboxUrl] = useState('')
+  const chatSocketRef = useRef(null)
+  const chatReconnectRef = useRef({ attempts: 0, timer: null })
+  const chatBoxRef = useRef(null)
+  const [heroWeather, setHeroWeather] = useState(null)
   const [chatRecipientId, setChatRecipientId] = useState(1)
   const [profileForm, setProfileForm] = useState({
     travel_preferences: 'biển,ẩm thực',
@@ -91,6 +118,35 @@ function App() {
     comment: 'Chỗ ở rất đẹp, lịch trình ổn.',
   })
   const [reviews, setReviews] = useState([])
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [authMessage, setAuthMessage] = useState('')
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState('')
+  const adminFetch = (endpoint, options = {}) => fetch(endpoint, {
+    credentials: 'include',
+    headers: { 'X-CSRFToken': getCookie('csrftoken'), ...(options.headers || {}) },
+    ...options,
+  })
+
+  const pageMeta = {
+    home: ['DuLich_ThongMinh | Lên kế hoạch chuyến đi thông minh', 'Gợi ý điểm đến, nơi ở và lịch trình theo sở thích, ngân sách và thời tiết.'],
+    features: ['Tính năng | DuLich_ThongMinh', 'Khám phá các tính năng gợi ý lịch trình du lịch thông minh.'],
+    recommend: ['Gợi ý điểm đến | DuLich_ThongMinh', 'Tìm điểm đến và nơi lưu trú phù hợp cho hành trình của bạn.'],
+    profile: ['Hồ sơ du lịch | DuLich_ThongMinh', 'Quản lý tài khoản, sở thích và đánh giá du lịch của bạn.'],
+    chat: ['Hỗ trợ trực tuyến | DuLich_ThongMinh', 'Nhận hỗ trợ cho hành trình và đặt phòng của bạn.'],
+    admin: ['Quản trị nội dung | DuLich_ThongMinh', 'Quản lý điểm đến, nơi ở và loại phòng.'],
+    login: ['Đăng nhập | DuLich_ThongMinh', 'Đăng nhập để lưu sở thích, hành trình và đánh giá xác thực.'],
+    register: ['Đăng ký | DuLich_ThongMinh', 'Tạo tài khoản DuLich_ThongMinh để cá nhân hóa chuyến đi.'],
+    forgot: ['Quên mật khẩu | DuLich_ThongMinh', 'Yêu cầu hướng dẫn đặt lại mật khẩu tài khoản của bạn.'],
+    reset: ['Đặt lại mật khẩu | DuLich_ThongMinh', 'Tạo mật khẩu mới cho tài khoản DuLich_ThongMinh của bạn.'],
+    thanks: ['Cảm ơn bạn | DuLich_ThongMinh', 'Yêu cầu của bạn đã được tiếp nhận thành công.'],
+    'not-found': ['Không tìm thấy trang | DuLich_ThongMinh', 'Trang bạn tìm kiếm không tồn tại hoặc đã được di chuyển.'],
+  }
+  const navigate = (path) => {
+    window.history.pushState({}, '', path)
+    setActiveTab(routeToTab(path))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const fetchRecommendations = async (payload) => {
     const params = new URLSearchParams({
@@ -145,8 +201,8 @@ function App() {
   const refreshAdminData = async () => {
     try {
       const [destinationsResponse, accommodationsResponse] = await Promise.all([
-        fetch(`${backendUrl}/api/admin/destinations/`),
-        fetch(`${backendUrl}/api/admin/accommodations/`),
+        adminFetch(`${backendUrl}/api/admin/destinations/`),
+        adminFetch(`${backendUrl}/api/admin/accommodations/`),
       ])
 
       if (!destinationsResponse.ok || !accommodationsResponse.ok) {
@@ -160,7 +216,7 @@ function App() {
 
       const entries = await Promise.all(
         accommodationData.map(async (item) => {
-          const response = await fetch(`${backendUrl}/api/admin/accommodations/${item.id}/room-types/`)
+          const response = await adminFetch(`${backendUrl}/api/admin/accommodations/${item.id}/room-types/`)
           if (!response.ok) {
             return [item.id, []]
           }
@@ -178,13 +234,67 @@ function App() {
   useEffect(() => {
     fetchRecommendations(form)
     loadBookingCatalog()
+    fetch(`${backendUrl}/api/auth/csrf/`, { credentials: 'include' }).catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'admin') {
-      refreshAdminData()
+    if (!results.length) return undefined
+    let cancelled = false
+    let index = 0
+    const loadWeather = () => {
+      const destination = results[index % results.length]
+      index += 1
+      fetch(`${backendUrl}/api/weather/?latitude=${destination.latitude}&longitude=${destination.longitude}&date=${form.travel_date}`)
+        .then((response) => response.ok ? response.json() : null)
+        .then((weather) => {
+          if (!cancelled && weather) setHeroWeather({ ...weather, name: destination.name, image_url: destination.image_url })
+        })
+        .catch(() => {})
     }
+    loadWeather()
+    const timer = window.setInterval(loadWeather, 6000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [results, form.travel_date])
+
+  useEffect(() => {
+    fetch(`${backendUrl}/api/auth/me/`, { credentials: 'include' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!data) return
+        setCurrentUser(data.user)
+        setProfileForm({
+          travel_preferences: (data.profile.travel_preferences || []).join(', '),
+          budget_estimate: String(data.profile.budget_estimate || 0),
+          free_text: data.profile.free_text || '',
+        })
+        fetchSearchHistory(data.user.id)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => setActiveTab(routeToTab(window.location.pathname))
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const [title, description] = pageMeta[activeTab] || pageMeta.home
+    document.title = title
+    document.querySelector('meta[name="description"]')?.setAttribute('content', description)
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', title)
+    document.querySelector('meta[property="og:description"]')?.setAttribute('content', description)
   }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab === 'admin') {
+      if (currentUser?.is_staff) {
+        refreshAdminData()
+      } else {
+        setAdminMessage('Bạn không có quyền truy cập khu vực quản trị.')
+      }
+    }
+  }, [activeTab, currentUser])
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -233,7 +343,7 @@ function App() {
     const method = destinationEditId ? 'PATCH' : 'POST'
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await adminFetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -270,7 +380,7 @@ function App() {
     const method = accommodationEditId ? 'PATCH' : 'POST'
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await adminFetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -319,7 +429,7 @@ function App() {
 
   const deleteDestination = async (id) => {
     try {
-      const response = await fetch(`${backendUrl}/api/admin/destinations/${id}/`, { method: 'DELETE' })
+      const response = await adminFetch(`${backendUrl}/api/admin/destinations/${id}/`, { method: 'DELETE' })
       if (!response.ok) {
         throw new Error('Xóa điểm đến thất bại')
       }
@@ -332,7 +442,7 @@ function App() {
 
   const deleteAccommodation = async (id) => {
     try {
-      const response = await fetch(`${backendUrl}/api/admin/accommodations/${id}/`, { method: 'DELETE' })
+      const response = await adminFetch(`${backendUrl}/api/admin/accommodations/${id}/`, { method: 'DELETE' })
       if (!response.ok) {
         throw new Error('Xóa chỗ ở thất bại')
       }
@@ -363,7 +473,7 @@ function App() {
     const method = roomTypeEditId ? 'PATCH' : 'POST'
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await adminFetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -390,7 +500,7 @@ function App() {
 
   const deleteRoomType = async (roomTypeId) => {
     try {
-      const response = await fetch(`${backendUrl}/api/admin/room-types/${roomTypeId}/`, { method: 'DELETE' })
+      const response = await adminFetch(`${backendUrl}/api/admin/room-types/${roomTypeId}/`, { method: 'DELETE' })
       if (!response.ok) {
         throw new Error('Xóa loại phòng thất bại')
       }
@@ -509,7 +619,7 @@ function App() {
 
   const fetchUserProfile = async (userId) => {
     try {
-      const response = await fetch(`${backendUrl}/api/profile/${userId}/`)
+      const response = await fetch(`${backendUrl}/api/profile/${userId}/`, { credentials: 'include' })
       if (!response.ok) {
         throw new Error('Không thể tải hồ sơ người dùng')
       }
@@ -554,6 +664,7 @@ function App() {
       const response = await fetch(`${backendUrl}/api/auth/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           username: authForm.username,
           password: authForm.password,
@@ -574,6 +685,8 @@ function App() {
       })
       setProfileMessage('Đăng nhập thành công.')
       fetchSearchHistory(data.user.id)
+      setAuthMessage('Đăng nhập thành công.')
+      navigate(data.user.is_staff ? '/quan-tri' : '/ho-so')
     } catch (err) {
       setProfileMessage(err.message)
     }
@@ -585,6 +698,7 @@ function App() {
       const response = await fetch(`${backendUrl}/api/auth/register/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           username: authForm.username,
           email: authForm.email,
@@ -600,8 +714,10 @@ function App() {
       const data = await response.json()
       setCurrentUser(data)
       setProfileMessage('Tạo tài khoản demo thành công.')
+      setAuthMessage('Tạo tài khoản thành công. Hãy hoàn thiện hồ sơ của bạn.')
       fetchUserProfile(data.id)
       fetchSearchHistory(data.id)
+      navigate('/ho-so')
     } catch (err) {
       setProfileMessage(err.message)
     }
@@ -618,6 +734,7 @@ function App() {
       const response = await fetch(`${backendUrl}/api/profile/${currentUser.id}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           travel_preferences: profileForm.travel_preferences.split(',').map((item) => item.trim()).filter(Boolean),
           budget_estimate: Number(profileForm.budget_estimate || 0),
@@ -646,83 +763,81 @@ function App() {
     if (!currentUser || activeTab !== 'chat') return undefined
 
     const roomName = `support-${Math.min(currentUser.id, chatRecipientId)}-${Math.max(currentUser.id, chatRecipientId)}`
-    const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomName}/`)
-    setChatStatus('Đang kết nối chat realtime...')
-
-    socket.onopen = () => {
-      setChatStatus('Đã kết nối chat realtime.')
-      fetch(`${backendUrl}/api/chat/messages/?user_id=${currentUser.id}&receiver_id=${chatRecipientId}`)
-        .then((response) => response.ok ? response.json() : [])
-        .then((messages) => setChatMessages(messages))
-        .catch(() => setChatMessages([]))
+    let disposed = false
+    const connect = () => {
+      if (disposed) return
+      setChatStatus('Đang kết nối chat realtime...')
+      const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomName}/`)
+      chatSocketRef.current = socket
+      socket.onopen = () => {
+        chatReconnectRef.current.attempts = 0
+        setChatConnected(true)
+        setChatStatus('Đã kết nối chat realtime.')
+        fetch(`${backendUrl}/api/chat/messages/?user_id=${currentUser.id}&receiver_id=${chatRecipientId}`)
+          .then((response) => response.ok ? response.json() : [])
+          .then((messages) => setChatMessages(messages))
+          .catch(() => setChatMessages([]))
+      }
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data)
+        setChatMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message])
+      }
+      socket.onclose = () => {
+        setChatConnected(false)
+        if (!disposed && chatReconnectRef.current.attempts < 5) {
+          chatReconnectRef.current.attempts += 1
+          setChatStatus(`Mất kết nối, thử lại sau 3 giây (${chatReconnectRef.current.attempts}/5).`)
+          chatReconnectRef.current.timer = window.setTimeout(connect, 3000)
+        } else if (!disposed) setChatStatus('Chat đã mất kết nối.')
+      }
+      socket.onerror = () => setChatStatus('Không thể kết nối chat realtime.')
     }
-
-    socket.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      setChatMessages((current) => {
-        const exists = current.some((item) => item.id === message.id)
-        if (exists) return current
-        return [...current, {
-          id: message.id,
-          sender: Number(message.sender),
-          receiver: Number(message.receiver),
-          content: message.content,
-          created_at: message.created_at,
-        }]
-      })
+    connect()
+    return () => {
+      disposed = true
+      if (chatReconnectRef.current.timer) window.clearTimeout(chatReconnectRef.current.timer)
+      chatSocketRef.current?.close()
+      chatSocketRef.current = null
+      setChatConnected(false)
     }
-
-    socket.onclose = () => {
-      setChatStatus('Kết nối chat đã đóng.')
-    }
-
-    socket.onerror = () => {
-      setChatStatus('Không thể kết nối chat realtime.')
-    }
-
-    return () => socket.close()
   }, [activeTab, currentUser, chatRecipientId])
+
+  useEffect(() => {
+    if (chatBoxRef.current) chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight
+  }, [chatMessages])
 
   const handleChatSubmit = async (event) => {
     event.preventDefault()
-    if (!currentUser || !chatInput.trim()) return
-
-    const payload = {
-      sender: currentUser.id,
-      receiver: chatRecipientId,
-      content: chatInput.trim(),
-      user_id: currentUser.id,
-      receiver_id: chatRecipientId,
-    }
-
-    const roomName = `support-${Math.min(currentUser.id, chatRecipientId)}-${Math.max(currentUser.id, chatRecipientId)}`
-    const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomName}/`)
-    socket.onopen = () => {
-      socket.send(JSON.stringify({
-        message: payload.content,
-        sender_id: payload.sender,
-        receiver_id: payload.receiver,
-      }))
-      socket.close()
-    }
+    if (!currentUser || (!chatInput.trim() && !chatAttachment) || chatSocketRef.current?.readyState !== WebSocket.OPEN) return
 
     try {
-      const response = await fetch(`${backendUrl}/api/chat/messages/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!response.ok) {
-        throw new Error('Gửi tin nhắn thất bại.')
+      let attachment = { attachment_url: '', attachment_type: 'none' }
+      if (chatAttachment) {
+        const formData = new FormData()
+        formData.append('file', chatAttachment)
+        const uploadResponse = await fetch(`${backendUrl}/api/chat/upload/`, { method: 'POST', body: formData })
+        const uploadData = await uploadResponse.json()
+        if (!uploadResponse.ok) throw new Error(uploadData.error || 'Tải tệp lên thất bại.')
+        attachment = uploadData
       }
-
-      const savedMessage = await response.json()
-      setChatMessages((current) => [...current, savedMessage])
+      chatSocketRef.current.send(JSON.stringify({
+        message: chatInput.trim(),
+        sender_id: currentUser.id,
+        receiver_id: chatRecipientId,
+        ...attachment,
+      }))
       setChatInput('')
-    } catch (err) {
-      setChatStatus(err.message)
-    }
+      setChatAttachment(null)
+      setChatPreviewUrl('')
+    } catch (err) { setChatStatus(err.message) }
+  }
+
+  const handleChatAttachment = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setChatAttachment(file)
+    setChatPreviewUrl(URL.createObjectURL(file))
+    event.target.value = ''
   }
 
   const saveSearchHistory = async (event) => {
@@ -806,46 +921,180 @@ function App() {
     loadReviews()
   }, [])
 
+  useEffect(() => {
+    const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID
+    if (!measurementId || document.querySelector(`script[data-ga-id="${measurementId}"]`)) return
+    const script = document.createElement('script')
+    script.async = true
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`
+    script.dataset.gaId = measurementId
+    document.head.appendChild(script)
+    window.dataLayer = window.dataLayer || []
+    window.gtag = function gtag() { window.dataLayer.push(arguments) }
+    window.gtag('js', new Date())
+    window.gtag('config', measurementId, { anonymize_ip: true })
+  }, [])
+
+  const submitForgotPassword = (event) => {
+    event.preventDefault()
+    fetch(`${backendUrl}/api/auth/password-reset/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email: forgotEmail }),
+    })
+      .then((response) => response.json())
+      .then((data) => setAuthMessage(data.message || 'Nếu email tồn tại, hướng dẫn đặt lại mật khẩu sẽ được gửi.'))
+      .catch(() => setAuthMessage('Không thể gửi yêu cầu lúc này. Vui lòng thử lại.'))
+  }
+
+  const submitResetPassword = async (event) => {
+    event.preventDefault()
+    if (resetPassword !== resetPasswordConfirm) {
+      setAuthMessage('Mật khẩu xác nhận chưa khớp.')
+      return
+    }
+    const params = new URLSearchParams(window.location.search)
+    try {
+      const response = await fetch(`${backendUrl}/api/auth/password-reset/confirm/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ uid: params.get('uid'), token: params.get('token'), password: resetPassword }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Không thể đặt lại mật khẩu.')
+      setAuthMessage('Đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay.')
+      navigate('/dang-nhap')
+    } catch (err) {
+      setAuthMessage(err.message)
+    }
+  }
+
+  const handleLogout = async () => {
+    await fetch(`${backendUrl}/api/auth/logout/`, { method: 'POST', credentials: 'include' }).catch(() => {})
+    setCurrentUser(null)
+    setChatMessages([])
+    setSearchHistory([])
+    setAuthMessage('Bạn đã đăng xuất.')
+    navigate('/dang-nhap')
+  }
+
   return (
     <div className="travel-app">
       <header className="topbar">
-        <div className="brand">DuLich_ThongMinh</div>
+        <button type="button" className="brand brand-button" onClick={() => navigate('/')}>DuLich_ThongMinh</button>
         <nav>
-          <button type="button" className={activeTab === 'home' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('home')}>
+          <button type="button" className={activeTab === 'home' ? 'nav-button active' : 'nav-button'} onClick={() => navigate('/')}>
             Giới thiệu
           </button>
-          <button type="button" className={activeTab === 'features' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('features')}>
+          <button type="button" className={activeTab === 'features' ? 'nav-button active' : 'nav-button'} onClick={() => navigate('/tinh-nang')}>
             Tính năng
           </button>
-          <button type="button" className={activeTab === 'recommend' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('recommend')}>
+          <button type="button" className={activeTab === 'recommend' ? 'nav-button active' : 'nav-button'} onClick={() => navigate('/goi-y')}>
             Gợi ý
           </button>
-          <button type="button" className={activeTab === 'profile' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('profile')}>
+          <button type="button" className={activeTab === 'profile' ? 'nav-button active' : 'nav-button'} onClick={() => navigate('/ho-so')}>
             Hồ sơ
           </button>
-          <button type="button" className={activeTab === 'chat' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('chat')}>
+          <button type="button" className={activeTab === 'chat' ? 'nav-button active' : 'nav-button'} onClick={() => navigate('/chat')}>
             Chat realtime
           </button>
-          <button type="button" className={activeTab === 'admin' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveTab('admin')}>
-            Quản trị
-          </button>
+          {currentUser?.is_staff && (
+            <button type="button" className={activeTab === 'admin' ? 'nav-button active' : 'nav-button'} onClick={() => navigate('/quan-tri')}>
+              Quản trị
+            </button>
+          )}
         </nav>
-        <button type="button" className="primary-btn" onClick={() => setActiveTab('profile')}>Đăng nhập</button>
+        <button type="button" className="primary-btn" onClick={() => navigate(currentUser ? '/ho-so' : '/dang-nhap')}>{currentUser ? 'Hồ sơ' : 'Đăng nhập'}</button>
+        {currentUser && <button type="button" className="secondary-btn" onClick={handleLogout}>Đăng xuất</button>}
       </header>
 
       <main>
+        {activeTab === 'login' && (
+          <section className="auth-page" aria-labelledby="login-title">
+            <div className="auth-card">
+              <span className="eyebrow dark">Chào mừng trở lại</span>
+              <h1 id="login-title">Đăng nhập</h1>
+              <p>Đăng nhập để quản lý hành trình, hồ sơ và những đánh giá đã xác thực.</p>
+              <form className="admin-form" onSubmit={loginDemoUser}>
+                <label>Tên đăng nhập<input name="username" autoComplete="username" required value={authForm.username} onChange={handleAuthField} /></label>
+                <label>Mật khẩu<input name="password" type="password" autoComplete="current-password" required value={authForm.password} onChange={handleAuthField} /></label>
+                <button type="submit" className="primary-btn">Đăng nhập</button>
+              </form>
+              <div className="auth-links"><button type="button" onClick={() => navigate('/quen-mat-khau')}>Quên mật khẩu?</button><button type="button" onClick={() => navigate('/dang-ky')}>Chưa có tài khoản? Đăng ký</button></div>
+              {authMessage && <p className="admin-message">{authMessage}</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'register' && (
+          <section className="auth-page" aria-labelledby="register-title">
+            <div className="auth-card">
+              <span className="eyebrow dark">Bắt đầu hành trình</span>
+              <h1 id="register-title">Tạo tài khoản</h1>
+              <p>Lưu sở thích và nhận gợi ý du lịch phù hợp hơn sau mỗi chuyến đi.</p>
+              <form className="admin-form" onSubmit={registerDemoUser}>
+                <label>Tên đăng nhập<input name="username" autoComplete="username" required value={authForm.username} onChange={handleAuthField} /></label>
+                <label>Email<input name="email" type="email" autoComplete="email" required value={authForm.email} onChange={handleAuthField} /></label>
+                <label>Mật khẩu<input name="password" type="password" autoComplete="new-password" minLength="8" required value={authForm.password} onChange={handleAuthField} /></label>
+                <button type="submit" className="primary-btn">Tạo tài khoản</button>
+              </form>
+              <div className="auth-links"><button type="button" onClick={() => navigate('/dang-nhap')}>Đã có tài khoản? Đăng nhập</button></div>
+              {authMessage && <p className="admin-message">{authMessage}</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'forgot' && (
+          <section className="auth-page" aria-labelledby="forgot-title">
+            <div className="auth-card">
+              <span className="eyebrow dark">Khôi phục tài khoản</span>
+              <h1 id="forgot-title">Quên mật khẩu?</h1>
+              <p>Nhập email đăng ký. Vì lý do bảo mật, thông báo luôn giống nhau dù email có tồn tại hay không.</p>
+              <form className="admin-form" onSubmit={submitForgotPassword}>
+                <label>Email<input type="email" autoComplete="email" required value={forgotEmail} onChange={(event) => setForgotEmail(event.target.value)} /></label>
+                <button type="submit" className="primary-btn">Gửi hướng dẫn</button>
+              </form>
+              <div className="auth-links"><button type="button" onClick={() => navigate('/dang-nhap')}>Quay lại đăng nhập</button></div>
+              {authMessage && <p className="admin-message">{authMessage}</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'reset' && (
+          <section className="auth-page" aria-labelledby="reset-title">
+            <div className="auth-card">
+              <span className="eyebrow dark">Bảo mật tài khoản</span>
+              <h1 id="reset-title">Đặt lại mật khẩu</h1>
+              <form className="admin-form" onSubmit={submitResetPassword}>
+                <label>Mật khẩu mới<input type="password" autoComplete="new-password" minLength="8" required value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} /></label>
+                <label>Xác nhận mật khẩu<input type="password" autoComplete="new-password" minLength="8" required value={resetPasswordConfirm} onChange={(event) => setResetPasswordConfirm(event.target.value)} /></label>
+                <button type="submit" className="primary-btn">Lưu mật khẩu mới</button>
+              </form>
+              {authMessage && <p className="admin-message">{authMessage}</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'thanks' && (
+          <section className="auth-page" aria-labelledby="thanks-title"><div className="auth-card thanks-card"><span className="eyebrow dark">Đã tiếp nhận</span><h1 id="thanks-title">Cảm ơn bạn!</h1><p>Yêu cầu của bạn đã được ghi nhận. Chúc bạn có một hành trình thật đáng nhớ.</p><button type="button" className="primary-btn" onClick={() => navigate('/')}>Về trang chủ</button></div></section>
+        )}
+
+        {activeTab === 'not-found' && (
+          <section className="auth-page" aria-labelledby="not-found-title"><div className="auth-card thanks-card"><span className="eyebrow dark">Lỗi 404</span><h1 id="not-found-title">Không tìm thấy trang</h1><p>Đường dẫn này không tồn tại hoặc đã được thay đổi. Bạn có thể quay về trang chủ để tiếp tục khám phá.</p><button type="button" className="primary-btn" onClick={() => navigate('/')}>Về trang chủ</button></div></section>
+        )}
+
         {activeTab === 'home' && (
           <>
-            <section className="hero">
+            <motion.section className="hero" style={{ '--hero-image': `url(${heroWeather?.image_url || heroFallbackImage})` }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <div className="hero-copy">
-                <span className="eyebrow">Website gợi ý du lịch thông minh</span>
+                <span className="eyebrow"><MapPin size={14} /> Website gợi ý du lịch thông minh</span>
                 <h1>Khám phá hành trình phù hợp với bạn hơn.</h1>
                 <p>
                   Hệ thống dựa trên sở thích du lịch, ngân sách, thời tiết và khoảng cách để đề xuất
                   điểm đến, nơi nghỉ, và lịch trình tối ưu nhất cho mỗi chuyến đi.
                 </p>
                 <div className="hero-actions">
-                  <button className="primary-btn" onClick={() => setActiveTab('recommend')}>Bắt đầu ngay</button>
+                  <button className="primary-btn" onClick={() => navigate('/goi-y')}>Bắt đầu ngay</button>
                   <button className="secondary-btn" onClick={() => setActiveTab('admin')}>Xem demo</button>
                 </div>
                 <ul className="highlight-list">
@@ -857,22 +1106,23 @@ function App() {
 
               <div className="hero-panel">
                 <div className="mini-card card-main">
-                  <span className="tag">Điểm đến hot</span>
-                  <h3>Phú Quốc</h3>
-                  <p>Hạ tầng tốt, biển đẹp, phù hợp nghỉ dưỡng dài ngày.</p>
-                  <div className="meta-row">
-                    <span>Thời tiết: 29°C</span>
-                    <span>Ưu tiên: 92%</span>
-                  </div>
+                  <span className="tag">Dữ liệu trực tiếp</span>
+                  <AnimatePresence mode="wait">
+                    <motion.div key={heroWeather?.name || 'weather'} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                      <h3>{heroWeather?.name || 'Đang chọn điểm đến'}</h3>
+                      <p>Hôm nay {heroWeather?.name || 'điểm đến'} đang <Wifi size={16} /> {heroWeather?.temperature ?? '--'}°C — phù hợp để đi!</p>
+                      <div className="meta-row"><span>Khả năng mưa: {heroWeather?.precipitation_probability ?? '--'}%</span><span>Điểm thời tiết: {heroWeather?.weather_score ?? '--'}</span></div>
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
                 <div className="mini-card card-small">
                   <span>Ngân sách ước tính</span>
                   <strong>6.5 triệu</strong>
                 </div>
               </div>
-            </section>
+            </motion.section>
 
-            <section id="features" className="features">
+            <motion.section id="features" className="features" initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }}>
               <div className="section-head">
                 <span className="eyebrow dark">Tính năng cốt lõi</span>
                 <h2>Hệ thống giúp tối ưu quyết định du lịch</h2>
@@ -895,7 +1145,7 @@ function App() {
                   <p>Weighted Sum Model kết hợp preference, weather, cost và distance.</p>
                 </article>
               </div>
-            </section>
+            </motion.section>
           </>
         )}
 
@@ -937,19 +1187,20 @@ function App() {
             {error && <p className="form-error">{error}</p>}
 
             <div className="destination-grid">
-              {loading && <p className="loading-state">Đang tính toán gợi ý...</p>}
+              {loading && [1, 2, 3].map((item) => <div className="destination-card skeleton-card" key={item} aria-label="Đang tải điểm đến" />)}
               {!loading && results.length === 0 && !error && <p className="loading-state">Chưa có dữ liệu điểm đến.</p>}
               {results.map((item, index) => (
                 <article className="destination-card" key={item.id || `${item.name}-${index}`}>
+                  <div className="destination-image" style={{ backgroundImage: `url(${item.image_url || heroFallbackImage})` }} />
                   <span className="destination-tag">{item.category}</span>
-                  <h3>{item.name}</h3>
+                  <div className="card-title-row"><h3>{item.name}</h3><strong className="score-badge">{item.score}</strong></div>
                   <p>{item.description}</p>
                   <div className="destination-meta">
                     <span>Điểm số: {item.score}</span>
                     <span>Khoảng cách: {item.distance_km} km</span>
                   </div>
                   <div className="destination-meta">
-                    <span>Rating: {item.rating}</span>
+                    <span><Star size={14} fill="currentColor" /> {item.rating}</span>
                     <span>Chi phí: {Number(item.estimated_cost).toLocaleString()} đ</span>
                   </div>
                   <div className="card-actions">
@@ -1130,7 +1381,7 @@ function App() {
               {reviews.length === 0 ? <p>Chưa có đánh giá nào.</p> : reviews.map((item) => (
                 <div className="list-item" key={item.id || `${item.user}-${item.created_at}`}>
                   <div>
-                    <strong>{item.rating} sao</strong>
+                    <strong>{item.user_name || 'Khách đã xác thực'} · {item.rating} sao ✓</strong>
                     <p>{item.comment}</p>
                   </div>
                 </div>
@@ -1157,32 +1408,42 @@ function App() {
               {!currentUser && <p>Vui lòng đăng nhập để bắt đầu chat realtime.</p>}
               {currentUser && (
                 <>
-                  <div className="chat-box">
+                  <div className="chat-box" ref={chatBoxRef}>
                     {chatMessages.length === 0 ? (
                       <p className="loading-state">Chưa có tin nhắn nào.</p>
                     ) : (
                       chatMessages.map((item) => (
                         <div key={item.id || `${item.sender}-${item.created_at}`} className={Number(item.sender) === Number(currentUser.id) ? 'chat-message mine' : 'chat-message'}>
                           <strong>{Number(item.sender) === Number(currentUser.id) ? 'Bạn' : 'Admin'}</strong>
-                          <p>{item.content}</p>
+                          {item.content && <p>{item.content}</p>}
+                          {item.attachment_url && item.attachment_type === 'image' && <button type="button" className="chat-media-button" onClick={() => setLightboxUrl(item.attachment_url)}><img src={item.attachment_url} alt="Tệp ảnh trong tin nhắn" /></button>}
+                          {item.attachment_url && item.attachment_type === 'video' && <video className="chat-video" src={item.attachment_url} controls preload="metadata" />}
                           <small>{item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : 'Mới'}</small>
                         </div>
                       ))
                     )}
                   </div>
 
+                  {chatPreviewUrl && <div className="attachment-preview"><img src={chatPreviewUrl} alt="Xem trước tệp đính kèm" /><button type="button" className="icon-button" title="Bỏ tệp đính kèm" onClick={() => { setChatAttachment(null); setChatPreviewUrl('') }}><X size={16} /></button></div>}
                   <form onSubmit={handleChatSubmit} className="inline-group chat-input-row">
+                    <label className="icon-button" title="Đính kèm ảnh hoặc video"><Paperclip size={18} /><input type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.webm" onChange={handleChatAttachment} hidden /></label>
                     <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Nhập tin nhắn..." />
-                    <button type="submit" className="primary-btn">Gửi</button>
+                    <button type="submit" className="primary-btn"><Send size={16} /> Gửi</button>
                   </form>
-                  {chatStatus && <p className="loading-state">{chatStatus}</p>}
+                  {chatStatus && <p className="loading-state connection-status">{chatConnected ? <Wifi size={15} /> : <WifiOff size={15} />} {chatStatus}</p>}
                 </>
               )}
             </div>
           </section>
         )}
 
-        {activeTab === 'admin' && (
+        {lightboxUrl && <div className="lightbox" role="dialog" aria-label="Ảnh phóng to" onClick={() => setLightboxUrl('')}><button type="button" className="icon-button" title="Đóng" onClick={() => setLightboxUrl('')}><X /></button><img src={lightboxUrl} alt="Ảnh phóng to" onClick={(event) => event.stopPropagation()} /></div>}
+
+        {activeTab === 'admin' && !currentUser?.is_staff && (
+          <section className="auth-page"><div className="auth-card thanks-card"><span className="eyebrow dark">Truy cập bị từ chối</span><h1>Khu vực quản trị</h1><p>Chỉ tài khoản quản trị mới có thể quản lý điểm đến, chỗ ở và loại phòng.</p><button type="button" className="primary-btn" onClick={() => navigate('/')}>Về trang chủ</button></div></section>
+        )}
+
+        {activeTab === 'admin' && currentUser?.is_staff && (
           <section className="admin-panel">
             <div className="section-head">
               <span className="eyebrow dark">Quản trị nội dung</span>
@@ -1324,6 +1585,9 @@ function App() {
                           <div>
                             <strong>{room.name}</strong>
                             <p>{room.stock} phòng · {Number(room.base_price).toLocaleString()} đ</p>
+                            <div className="amenity-list" aria-label="Tiện ích phòng">
+                              {(room.amenities || []).map((amenity) => <span className="amenity-icon" title={amenity} key={amenity}>{amenityIcon(amenity)}</span>)}
+                            </div>
                           </div>
                           <div className="list-actions">
                             <button type="button" className="secondary-btn" onClick={() => startEditRoomType(room, item.id)}>Sửa</button>
@@ -1386,6 +1650,16 @@ function App() {
           </section>
         )}
       </main>
+      <footer className="site-footer">
+        <nav aria-label="Liên kết nội bộ">
+          <button type="button" onClick={() => navigate('/')}>Trang chủ</button>
+          <button type="button" onClick={() => navigate('/tinh-nang')}>Tính năng</button>
+          <button type="button" onClick={() => navigate('/goi-y')}>Gợi ý du lịch</button>
+          <button type="button" onClick={() => navigate('/dang-ky')}>Đăng ký</button>
+          <button type="button" onClick={() => navigate('/dang-nhap')}>Đăng nhập</button>
+        </nav>
+        <p>© 2026 DuLich_ThongMinh · Lên kế hoạch chuyến đi thông minh.</p>
+      </footer>
     </div>
   )
 }

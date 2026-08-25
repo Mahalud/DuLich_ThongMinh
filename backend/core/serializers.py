@@ -77,9 +77,11 @@ class BookingSerializer(serializers.ModelSerializer):
 
 
 class AccommodationReviewSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.username', read_only=True)
+
     class Meta:
         model = AccommodationReview
-        fields = ['id', 'accommodation', 'user', 'rating', 'comment', 'created_at']
+        fields = ['id', 'accommodation', 'user', 'user_name', 'rating', 'comment', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
@@ -91,7 +93,15 @@ class SearchHistorySerializer(serializers.ModelSerializer):
 
 
 class ChatMessageSerializer(serializers.ModelSerializer):
+    attachment_url = serializers.SerializerMethodField()
+
     class Meta:
         model = ChatMessage
-        fields = ['id', 'sender', 'receiver', 'content', 'created_at']
+        fields = ['id', 'sender', 'receiver', 'content', 'attachment_url', 'attachment_type', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def get_attachment_url(self, obj):
+        if not obj.attachment:
+            return ''
+        request = self.context.get('request')
+        return request.build_absolute_uri(obj.attachment.url) if request else obj.attachment.url

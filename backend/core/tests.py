@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from core.models import Accommodation, Booking, Destination, RoomType, UserProfile
@@ -125,6 +126,16 @@ class BookingLogicTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('results', response.json())
+
+    def test_chat_upload_accepts_image_and_returns_attachment_metadata(self):
+        client = APIClient()
+        image = SimpleUploadedFile('trip.webp', b'fake image bytes', content_type='image/webp')
+
+        response = client.post('/api/chat/upload/', {'file': image}, format='multipart')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['attachment_type'], 'image')
+        self.assertIn('/media/chat_attachments/', response.json()['attachment_url'])
 
     def test_booking_api_rejects_overlapping_dates_when_stock_is_full(self):
         client = APIClient()

@@ -214,9 +214,16 @@ class AccommodationReview(models.Model):
 
 
 class ChatMessage(models.Model):
+    ATTACHMENT_TYPES = [
+        ('none', 'Không có'),
+        ('image', 'Ảnh'),
+        ('video', 'Video'),
+    ]
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_messages')
     content = models.TextField()
+    attachment = models.FileField(upload_to='chat_attachments/%Y/%m/', null=True, blank=True)
+    attachment_type = models.CharField(max_length=10, choices=ATTACHMENT_TYPES, default='none')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

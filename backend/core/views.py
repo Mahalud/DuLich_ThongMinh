@@ -7,17 +7,23 @@ from urllib.request import urlopen
 
 import requests
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
+from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from sentence_transformers.util import cos_sim
-
-from django.core.mail import send_mail
 
 from .models import Accommodation, AccommodationReview, Booking, ChatMessage, Destination, RoomType, SearchHistory, UserProfile
 from .embedding import encode_text
@@ -33,6 +39,14 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+
+def require_admin(request):
+    if not request.user.is_authenticated:
+        return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'detail': 'Administrator permission required.'}, status=status.HTTP_403_FORBIDDEN)
+    return None
 
 
 def api_not_found(request, exception=None):
@@ -144,6 +158,9 @@ def destination_lookup(request):
 
 @api_view(['GET', 'POST'])
 def admin_destination_list_create(request):
+    denied = require_admin(request)
+    if denied:
+        return denied
     if request.method == 'GET':
         destinations = Destination.objects.all().order_by('-rating')
         return Response(DestinationSerializer(destinations, many=True).data)
@@ -157,6 +174,9 @@ def admin_destination_list_create(request):
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 def admin_destination_detail(request, destination_id):
+    denied = require_admin(request)
+    if denied:
+        return denied
     try:
         destination = Destination.objects.get(pk=destination_id)
     except Destination.DoesNotExist:
@@ -178,6 +198,9 @@ def admin_destination_detail(request, destination_id):
 
 @api_view(['GET', 'POST'])
 def admin_accommodation_list_create(request):
+    denied = require_admin(request)
+    if denied:
+        return denied
     if request.method == 'GET':
         accommodations = Accommodation.objects.prefetch_related('room_types').all().order_by('-rating')
         return Response(AccommodationSerializer(accommodations, many=True).data)
@@ -191,6 +214,9 @@ def admin_accommodation_list_create(request):
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 def admin_accommodation_detail(request, accommodation_id):
+    denied = require_admin(request)
+    if denied:
+        return denied
     try:
         accommodation = Accommodation.objects.get(pk=accommodation_id)
     except Accommodation.DoesNotExist:
@@ -212,6 +238,9 @@ def admin_accommodation_detail(request, accommodation_id):
 
 @api_view(['GET', 'POST'])
 def admin_room_type_list_create(request, accommodation_id):
+    denied = require_admin(request)
+    if denied:
+        return denied
     try:
         accommodation = Accommodation.objects.get(pk=accommodation_id)
     except Accommodation.DoesNotExist:
@@ -231,6 +260,9 @@ def admin_room_type_list_create(request, accommodation_id):
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 def admin_room_type_detail(request, room_type_id):
+    denied = require_admin(request)
+    if denied:
+        return denied
     try:
         room_type = RoomType.objects.get(pk=room_type_id)
     except RoomType.DoesNotExist:
@@ -369,6 +401,7 @@ def _recommendation_results(preferences, budget_estimate, latitude, longitude, t
             'name': destination.name,
             'description': destination.description,
             'category': destination.category,
+            'image_url': destination.image_url,
             'rating': destination.rating,
             'latitude': destination.latitude,
             'longitude': destination.longitude,
@@ -729,13 +762,22 @@ def register_user(request):
     if User.objects.filter(username=username).exists():
         return Response({'error': 'Tên đăng nhập đã tồn tại.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'Email is already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        validate_password(password, user=User(username=username, email=email))
+    except ValidationError as exc:
+        return Response({'error': ' '.join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
     user = User.objects.create_user(username=username, email=email, password=password)
     UserProfile.objects.get_or_create(user=user)
+    login(request, user)
 
     return Response({
         'id': user.id,
         'username': user.username,
         'email': user.email,
+        'is_staff': user.is_staff or user.is_superuser,
     }, status=status.HTTP_201_CREATED)
 
 
@@ -748,6 +790,7 @@ def login_user(request):
     if user is None:
         return Response({'error': 'Tên đăng nhập hoặc mật khẩu không đúng.'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    login(request, user)
     profile = UserProfile.objects.filter(user=user).first()
     return Response({
         'success': True,
@@ -755,6 +798,7 @@ def login_user(request):
             'id': user.id,
             'username': user.username,
             'email': user.email,
+            'is_staff': user.is_staff or user.is_superuser,
         },
         'profile': {
             'travel_preferences': profile.travel_preferences if profile else [],
@@ -764,8 +808,80 @@ def login_user(request):
     })
 
 
+@api_view(['GET'])
+def current_user(request):
+    if not request.user.is_authenticated:
+        return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    return Response({
+        'user': {
+            'id': request.user.id,
+            'username': request.user.username,
+            'email': request.user.email,
+            'is_staff': request.user.is_staff or request.user.is_superuser,
+        },
+        'profile': {
+            'travel_preferences': profile.travel_preferences,
+            'budget_estimate': str(profile.budget_estimate),
+            'free_text': profile.free_text,
+        },
+    })
+
+
+@ensure_csrf_cookie
+@api_view(['GET'])
+def csrf_cookie(request):
+    return Response({'detail': 'CSRF cookie set.'})
+
+
+@api_view(['POST'])
+def logout_user(request):
+    logout(request)
+    return Response({'success': True})
+
+
+@api_view(['POST'])
+def password_reset_request(request):
+    email = (request.data.get('email') or '').strip()
+    user = User.objects.filter(email__iexact=email, is_active=True).first()
+    if user:
+        uid = urlsafe_base64_encode(str(user.pk).encode())
+        token = default_token_generator.make_token(user)
+        reset_url = f'{settings.FRONTEND_URL.rstrip("/")}/dat-lai-mat-khau?uid={uid}&token={token}'
+        send_mail(
+            'Password reset request',
+            f'Open this link to reset your password: {reset_url}',
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=True,
+        )
+    return Response({'message': 'If the email exists, reset instructions have been sent.'})
+
+
+@api_view(['POST'])
+def password_reset_confirm(request):
+    uid = request.data.get('uid', '')
+    token = request.data.get('token', '')
+    password = request.data.get('password', '')
+    try:
+        user = User.objects.get(pk=force_str(urlsafe_base64_decode(uid)))
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        return Response({'error': 'Invalid password reset link.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not default_token_generator.check_token(user, token):
+        return Response({'error': 'This password reset link is invalid or expired.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        validate_password(password, user=user)
+    except ValidationError as exc:
+        return Response({'error': ' '.join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+    user.set_password(password)
+    user.save(update_fields=['password'])
+    return Response({'success': True, 'message': 'Password updated. Please sign in.'})
+
+
 @api_view(['GET', 'PATCH'])
 def profile_detail(request, user_id):
+    if not request.user.is_authenticated or request.user.id != user_id:
+        return Response({'detail': 'Authentication required.'}, status=status.HTTP_403_FORBIDDEN)
     try:
         user = User.objects.get(pk=user_id)
     except User.DoesNotExist:
@@ -840,6 +956,35 @@ def chat_message_list(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['POST'])
+def chat_upload(request):
+    uploaded_file = request.FILES.get('file')
+    if not uploaded_file:
+        return Response({'error': 'Vui lòng chọn tệp đính kèm.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    extension = os.path.splitext(uploaded_file.name)[1].lower()
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+    video_extensions = {'.mp4', '.webm'}
+    if extension in image_extensions:
+        attachment_type = 'image'
+        max_size = 5 * 1024 * 1024
+    elif extension in video_extensions:
+        attachment_type = 'video'
+        max_size = 20 * 1024 * 1024
+    else:
+        return Response({'error': 'Chỉ hỗ trợ JPG, JPEG, PNG, WEBP, MP4 và WEBM.'}, status=status.HTTP_400_BAD_REQUEST)
+    if uploaded_file.size > max_size:
+        return Response({'error': f'Tệp {attachment_type} vượt quá dung lượng cho phép.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    attachment_name = default_storage.save(f'chat_attachments/{date.today():%Y/%m}/{uploaded_file.name}', uploaded_file)
+    attachment_url = default_storage.url(attachment_name)
+    return Response({
+        'attachment_url': request.build_absolute_uri(attachment_url),
+        'attachment_type': attachment_type,
+        'attachment_name': uploaded_file.name,
+    }, status=status.HTTP_201_CREATED)
+
+
 @api_view(['GET', 'POST'])
 def review_list_create(request):
     if request.method == 'GET':
@@ -848,6 +993,24 @@ def review_list_create(request):
         if accommodation_id:
             queryset = queryset.filter(accommodation_id=accommodation_id)
         return Response(AccommodationReviewSerializer(queryset, many=True).data)
+
+    user_id = request.data.get('user')
+    accommodation_id = request.data.get('accommodation')
+    has_confirmed_stay = Booking.objects.filter(
+        user_id=user_id,
+        room_type__accommodation_id=accommodation_id,
+        status='confirmed',
+    ).exists()
+    if not has_confirmed_stay:
+        return Response(
+            {'detail': 'Chỉ khách đã hoàn tất lưu trú/đặt phòng xác nhận mới có thể đánh giá.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if AccommodationReview.objects.filter(user_id=user_id, accommodation_id=accommodation_id).exists():
+        return Response(
+            {'detail': 'Bạn đã gửi đánh giá cho chỗ ở này.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     serializer = AccommodationReviewSerializer(data=request.data)
     if serializer.is_valid():
