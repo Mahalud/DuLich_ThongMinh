@@ -140,7 +140,7 @@ export default function App({ Router = BrowserRouter, routerProps = {} } = {}) {
     else localStorage.removeItem('travel-origin')
   }, [originLocation])
   useEffect(() => {
-    fetch('http://localhost:8000/api/auth/csrf/', { credentials: 'include' }).catch(() => {})
+    api('/api/auth/csrf/').catch(() => {})
     const generation = ++authGenerationRef.current
     if (!authRequestRef.current) authRequestRef.current = getCurrentUser()
     let active = true

@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from dotenv import load_dotenv
 
@@ -23,13 +24,24 @@ load_dotenv(BASE_DIR.parent / '.env')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('SECRET_KEY', '')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise RuntimeError('SECRET_KEY phải được cấu hình khi DEBUG=False.')
+    SECRET_KEY = 'django-insecure-local-development-only'
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,testserver').split(',')
+    if host.strip()
+]
+render_hostname = os.getenv('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
 
 
 # Application definition
@@ -60,8 +72,16 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true'
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173',
+    ).split(',')
+    if origin.strip()
+]
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 PAYMENT_PROVIDER = os.getenv('PAYMENT_PROVIDER', 'vnpay').strip().lower()
 BASE_URL = os.getenv('BASE_URL', '').rstrip('/')
@@ -69,6 +89,13 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
     'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173',
 ).split(',')
+CSRF_TRUSTED_ORIGINS = [origin.strip().rstrip('/') for origin in CSRF_TRUSTED_ORIGINS if origin.strip()]
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE', 'Lax')
+SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False' if DEBUG else 'True').lower() == 'true'
 
 ROOT_URLCONF = 'config.urls'
 
@@ -119,22 +146,42 @@ CHANNEL_LAYERS = {
 
 CHAT_ALLOWED_ORIGINS = [
     origin.strip()
-    for origin in os.getenv('CHAT_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+    for origin in os.getenv('CHAT_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:5174').split(',')
     if origin.strip()
 ]
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DB_NAME = os.getenv('DB_NAME')
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
-DB_HOST = os.getenv('DB_HOST', '').strip()
-DB_PORT = os.getenv('DB_PORT', '5432')
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+if DATABASE_URL:
+    parsed_database_url = urlsplit(DATABASE_URL)
+    if parsed_database_url.scheme not in {'postgres', 'postgresql', 'postgresql+psycopg2'}:
+        raise RuntimeError('DATABASE_URL phải là URL PostgreSQL hợp lệ.')
+    database_options = dict(parse_qsl(parsed_database_url.query, keep_blank_values=True))
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
+            'NAME': unquote(parsed_database_url.path.lstrip('/')),
+            'USER': unquote(parsed_database_url.username or ''),
+            'PASSWORD': unquote(parsed_database_url.password or ''),
+            'HOST': parsed_database_url.hostname or '',
+            'PORT': parsed_database_url.port or 5432,
+            'OPTIONS': database_options,
+            # Neon may suspend idle computes; reconnect on the next request.
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '0')),
+            'CONN_HEALTH_CHECKS': True,
+        }
+    }
+else:
+    DB_NAME = os.getenv('DB_NAME')
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
+    DB_HOST = os.getenv('DB_HOST', '').strip()
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    USE_POSTGRES = bool(DB_NAME and DB_USER and DB_HOST and DB_HOST not in {'localhost', '127.0.0.1', '::1'})
 
-USE_POSTGRES = bool(DB_NAME and DB_USER and DB_HOST and DB_HOST not in {'localhost', '127.0.0.1', '::1'})
-
-if USE_POSTGRES:
+if not DATABASE_URL and USE_POSTGRES:
     DATABASES = {
         'default': {
             'ENGINE': 'django.contrib.gis.db.backends.postgis',
@@ -145,7 +192,7 @@ if USE_POSTGRES:
             'PORT': DB_PORT,
         }
     }
-else:
+elif not DATABASE_URL:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',

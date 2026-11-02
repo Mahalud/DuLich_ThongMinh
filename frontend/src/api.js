@@ -1,12 +1,27 @@
-export const backendUrl = 'http://localhost:8000'
+const configuredBackendUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+const localBackendUrl = import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin
+export const backendUrl = (configuredBackendUrl || localBackendUrl).replace(/\/+$/, '')
 
-const csrfToken = () => document.cookie.split('; ').find((item) => item.startsWith('csrftoken='))?.split('=')[1] || ''
+let cachedCsrfToken = ''
+const csrfTokenFromCookie = () => document.cookie.split('; ').find((item) => item.startsWith('csrftoken='))?.split('=')[1] || ''
+
+async function getCsrfToken() {
+  const cookieToken = csrfTokenFromCookie()
+  if (cookieToken) return cookieToken
+  if (cachedCsrfToken) return cachedCsrfToken
+  const response = await fetch(`${backendUrl}/api/auth/csrf/`, { credentials: 'include' })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data.csrfToken) throw new Error('Không thể khởi tạo phiên bảo mật. Vui lòng tải lại trang.')
+  cachedCsrfToken = data.csrfToken
+  return cachedCsrfToken
+}
 
 export async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) }
-  if (options.method && options.method !== 'GET') headers['X-CSRFToken'] = csrfToken()
+  if (options.method && options.method !== 'GET') headers['X-CSRFToken'] = await getCsrfToken()
   const response = await fetch(`${backendUrl}${path}`, { credentials: 'include', ...options, headers })
   const data = await response.json().catch(() => ({}))
+  if (path === '/api/auth/csrf/' && data.csrfToken) cachedCsrfToken = data.csrfToken
   if (!response.ok) {
     const backendMessage = data.detail || data.error || data.non_field_errors?.[0]
     const genericErrors = {

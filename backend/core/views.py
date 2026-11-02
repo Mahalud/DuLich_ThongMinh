@@ -33,6 +33,7 @@ from django.db.models import Avg, Count, Q
 from django.db.models.functions import TruncDate
 from django.contrib.gis.db.models.functions import Distance
 from django.http import HttpResponseRedirect, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.utils.encoding import force_str
 from django.utils import timezone
@@ -2606,7 +2607,7 @@ def current_user(request):
 @ensure_csrf_cookie
 @api_view(['GET'])
 def csrf_cookie(request):
-    return Response({'detail': 'Đã thiết lập cookie bảo mật.'})
+    return Response({'detail': 'Đã thiết lập cookie bảo mật.', 'csrfToken': get_token(request)})
 
 
 @api_view(['POST'])
