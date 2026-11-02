@@ -1,9 +1,9 @@
 :root {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Be Vietnam Pro', Inter, system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #ebf8ff;
-  background: #061a2d;
+  color: var(--color-ink);
+  background: var(--color-cream);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -22,7 +22,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #071a2f;
+  background: var(--color-cream);
 }
 
 button,

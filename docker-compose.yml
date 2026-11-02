@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:16
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-travel_db}
       POSTGRES_USER: ${DB_USER:-travel_user}
@@ -12,19 +13,29 @@ services:
 
   redis:
     image: redis:7
+    restart: unless-stopped
     ports:
       - "6379:6379"
 
   backend:
     build: ./backend
-    command: python manage.py runserver 0.0.0.0:8000
+    init: true
+    restart: unless-stopped
+    command: python manage.py runserver 0.0.0.0:8000 --noreload
     env_file:
       - .env
     environment:
+      MODEL_WARMUP: "1"
       DB_HOST: db
       DB_PORT: 5432
+      HF_HOME: /root/.cache/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /root/.cache/huggingface/sentence_transformers
+      DB_NAME: ${POSTGRES_DB:-travel_db}
+      DB_USER: ${POSTGRES_USER:-travel_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-travel_pass}
     volumes:
       - ./backend:/app
+      - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
     depends_on:
@@ -33,17 +44,26 @@ services:
 
   celery:
     build: ./backend
-    command: celery -A config worker -l info
+    init: true
+    restart: unless-stopped
+    command: celery -A config worker -B -l info --concurrency=2 --prefetch-multiplier=1 -Q explanations,celery
     env_file:
       - .env
     environment:
       DB_HOST: db
       DB_PORT: 5432
+      HF_HOME: /root/.cache/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /root/.cache/huggingface/sentence_transformers
+      DB_NAME: ${POSTGRES_DB:-travel_db}
+      DB_USER: ${POSTGRES_USER:-travel_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-travel_pass}
     volumes:
       - ./backend:/app
+      - hf_cache:/root/.cache/huggingface
     depends_on:
       - db
       - redis
 
 volumes:
   postgres_data:
+  hf_cache:

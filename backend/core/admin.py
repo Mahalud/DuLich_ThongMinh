@@ -1,8 +1,11 @@
 from django.contrib import admin
 
-from .models import Accommodation, AccommodationReview, Booking, Destination, RoomType, SearchHistory, UserProfile
+from .models import Accommodation, AccommodationReview, Booking, Destination, RecommendationFeedback, RecommendationLog, RoomType, SearchHistory, UserCriteriaWeight, UserProfile
 
 admin.site.register(UserProfile)
+admin.site.register(UserCriteriaWeight)
+admin.site.register(RecommendationFeedback)
+admin.site.register(RecommendationLog)
 admin.site.register(SearchHistory)
 admin.site.register(Destination)
 admin.site.register(Accommodation)

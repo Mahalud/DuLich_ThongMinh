@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from core.models import Accommodation, Destination, RoomType
+from core.models import Accommodation, Destination, RoomType, Tour, TourStop
 
 
 class Command(BaseCommand):
@@ -87,44 +87,69 @@ class Command(BaseCommand):
                 },
             )
 
+        tour_data = [
+            ('Tour 3N2Đ: Đà Lạt - Nha Trang', 'Hành trình cao nguyên và biển.', 3, 4290000, ['Đà Lạt', 'Nha Trang']),
+            ('Tour 4N3Đ: Hội An - Phú Quốc', 'Phố cổ, biển xanh và ẩm thực.', 4, 5990000, ['Hội An', 'Phú Quốc']),
+        ]
+        for name, description, duration, price, stops in tour_data:
+            tour, _ = Tour.objects.update_or_create(name=name, defaults={'description': description, 'duration_days': duration, 'price_per_person': price, 'cover_image_url': 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80', 'is_active': True})
+            TourStop.objects.filter(tour=tour).delete()
+            for day, destination_name in enumerate(stops, 1):
+                TourStop.objects.create(tour=tour, destination=Destination.objects.get(name=destination_name), day_number=day, note=f'Tham quan {destination_name}.')
+
         accommodation_data = [
             {
                 'name': 'Azure Bay Lodge',
+                'destination': 'Phú Quốc',
                 'description': 'Demo chỗ ở ven biển, phục vụ du lịch nghỉ dưỡng, khoảng cách ngắn đến bãi biển và các địa điểm ăn uống.',
                 'category': 'hotel',
-                'latitude': 10.2233,
-                'longitude': 103.9607,
+                'latitude': 10.2300,
+                'longitude': 103.9680,
                 'rating': 4.8,
                 'room_types': [
-                    {'name': 'Phòng đơn', 'base_price': 1200000, 'stock': 5, 'amenities': ['wifi', 'điều hòa', 'máy giặt', 'bồn tắm']},
-                    {'name': 'Phòng đôi', 'base_price': 1800000, 'stock': 4, 'amenities': ['wifi', 'điều hòa', 'ban công', 'hướng biển']},
-                    {'name': 'Phòng gia đình', 'base_price': 2600000, 'stock': 3, 'amenities': ['wifi', 'điều hòa', 'phòng ăn', 'bể bơi']},
+                    {'name': 'Phòng đơn', 'base_price': 1200000, 'stock': 5, 'amenities': ['wifi', 'dieu_hoa', 'giat_ui', 'bon_tam']},
+                    {'name': 'Phòng đôi', 'base_price': 1800000, 'stock': 4, 'amenities': ['wifi', 'dieu_hoa', 'ban_cong', 'huong_bien']},
+                    {'name': 'Phòng gia đình', 'base_price': 2600000, 'stock': 3, 'amenities': ['wifi', 'dieu_hoa', 'bep', 'ho_boi']},
                 ],
             },
             {
                 'name': 'Lantern Courtyard Stay',
+                'destination': 'Hội An',
                 'description': 'Demo homestay ở Hội An với phong cách cổ điển, gần phố cổ và các điểm check-in đẹp.',
                 'category': 'homestay',
-                'latitude': 15.8801,
-                'longitude': 108.3380,
+                'latitude': 15.8740,
+                'longitude': 108.3450,
                 'rating': 4.7,
                 'room_types': [
-                    {'name': 'Phòng đơn', 'base_price': 900000, 'stock': 6, 'amenities': ['wifi', 'điều hòa', 'bồn tắm', 'ban công']},
-                    {'name': 'Phòng đôi', 'base_price': 1400000, 'stock': 5, 'amenities': ['wifi', 'điều hòa', 'gác lửng', 'tủ quần áo']},
-                    {'name': 'Phòng gia đình', 'base_price': 2200000, 'stock': 2, 'amenities': ['wifi', 'điều hòa', 'phòng khách', 'bàn ăn']},
+                    {'name': 'Phòng đơn', 'base_price': 900000, 'stock': 6, 'amenities': ['wifi', 'dieu_hoa', 'bon_tam', 'ban_cong']},
+                    {'name': 'Phòng đôi', 'base_price': 1400000, 'stock': 5, 'amenities': ['wifi', 'dieu_hoa', 'tivi', 'thang_may']},
+                    {'name': 'Phòng gia đình', 'base_price': 2200000, 'stock': 2, 'amenities': ['wifi', 'dieu_hoa', 'bep', 'bua_sang']},
                 ],
             },
             {
                 'name': 'Cloud Valley Retreat',
+                'destination': 'Đà Lạt',
                 'description': 'Demo chỗ ở ở Đà Lạt với không khí mát mẻ, nhìn ra đồi thông và khu vườn hoa.',
                 'category': 'hotel',
-                'latitude': 11.9404,
-                'longitude': 108.4583,
+                'latitude': 11.9480,
+                'longitude': 108.4650,
                 'rating': 4.6,
                 'room_types': [
-                    {'name': 'Phòng đơn', 'base_price': 1000000, 'stock': 5, 'amenities': ['wifi', 'điều hòa', 'bồn tắm', 'view núi']},
-                    {'name': 'Phòng đôi', 'base_price': 1600000, 'stock': 4, 'amenities': ['wifi', 'điều hòa', 'bếp nhỏ', 'ban công']},
-                    {'name': 'Phòng gia đình', 'base_price': 2400000, 'stock': 3, 'amenities': ['wifi', 'điều hòa', 'sân ngoài', 'hồ bơi']},
+                    {'name': 'Phòng đơn', 'base_price': 1000000, 'stock': 5, 'amenities': ['wifi', 'dieu_hoa', 'bon_tam', 'bua_sang']},
+                    {'name': 'Phòng đôi', 'base_price': 1600000, 'stock': 4, 'amenities': ['wifi', 'dieu_hoa', 'bep', 'ban_cong']},
+                    {'name': 'Phòng gia đình', 'base_price': 2400000, 'stock': 3, 'amenities': ['wifi', 'dieu_hoa', 'ho_boi', 'do_xe']},
+                ],
+            },
+            {
+                'name': 'Nha Trang Seaside Stay',
+                'destination': 'Nha Trang',
+                'description': 'Demo chỗ ở ven biển Nha Trang, thuận tiện đi bộ tới bãi biển và các điểm ăn uống trung tâm.',
+                'category': 'hotel',
+                'latitude': 12.2450,
+                'longitude': 109.1950,
+                'rating': 4.5,
+                'room_types': [
+                    {'name': 'Phòng đôi', 'base_price': 1500000, 'stock': 4, 'amenities': ['wifi', 'dieu_hoa', 'ban_cong']},
                 ],
             },
         ]
@@ -133,6 +158,7 @@ class Command(BaseCommand):
             accommodation, _ = Accommodation.objects.update_or_create(
                 name=payload['name'],
                 defaults={
+                    'destination': Destination.objects.get(name=payload['destination']),
                     'description': payload['description'],
                     'category': payload['category'],
                     'latitude': payload['latitude'],

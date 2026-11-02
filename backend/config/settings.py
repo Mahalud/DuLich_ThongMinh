@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
+    'django.contrib.gis',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
@@ -62,14 +63,12 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
-CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'travel_cache',
-    }
-}
+PAYMENT_PROVIDER = os.getenv('PAYMENT_PROVIDER', 'vnpay').strip().lower()
+BASE_URL = os.getenv('BASE_URL', '').rstrip('/')
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173',
+).split(',')
 
 ROOT_URLCONF = 'config.urls'
 
@@ -91,6 +90,24 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+DISTANCE_MAX_KM = float(os.getenv('DISTANCE_MAX_KM', '1000'))  # Maximum distance used to normalize the recommendation distance score.
+# Min-max preference stretch is enabled only above this empirical cosine threshold (see README quality sample).
+PREFERENCE_MATCH_MIN = float(os.getenv('PREFERENCE_MATCH_MIN', '0.30'))
+WEATHER_MAX_FORECAST_DAYS = 16
+WEATHER_CACHE_REDIS_URL = os.getenv(
+    'WEATHER_CACHE_REDIS_URL',
+    f'{REDIS_URL.rsplit("/", 1)[0]}/1',
+)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': WEATHER_CACHE_REDIS_URL,
+        'OPTIONS': {
+            'socket_connect_timeout': 2,
+            'socket_timeout': 2,
+        },
+    },
+}
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -99,6 +116,12 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+CHAT_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CHAT_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+    if origin.strip()
+]
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -114,7 +137,7 @@ USE_POSTGRES = bool(DB_NAME and DB_USER and DB_HOST and DB_HOST not in {'localho
 if USE_POSTGRES:
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql',
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
             'NAME': DB_NAME,
             'USER': DB_USER,
             'PASSWORD': DB_PASSWORD,
@@ -131,18 +154,48 @@ else:
     }
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+# Password reset links expire after this many seconds (Django token validator).
+PASSWORD_RESET_TIMEOUT = int(os.getenv('PASSWORD_RESET_TIMEOUT', '3600'))
+# Guests may cancel a room booking until this many days before check-in.
+ROOM_CANCELLATION_MIN_DAYS = int(os.getenv('ROOM_CANCELLATION_MIN_DAYS', '1'))
+# Full room refunds begin at this many days before check-in; later eligible cancellations receive 50%.
+ROOM_FULL_REFUND_MIN_DAYS = int(os.getenv('ROOM_FULL_REFUND_MIN_DAYS', '3'))
+# Guests may cancel a tour booking until this many days before departure.
+TOUR_CANCELLATION_MIN_DAYS = int(os.getenv('TOUR_CANCELLATION_MIN_DAYS', '3'))
+# Full tour refunds begin at this many days before departure; later eligible cancellations receive 50%.
+TOUR_FULL_REFUND_MIN_DAYS = int(os.getenv('TOUR_FULL_REFUND_MIN_DAYS', '7'))
+# Minimum cosine similarity for an assistant answer to rely on a knowledge chunk.
+RAG_MIN_SIMILARITY = float(os.getenv('RAG_MIN_SIMILARITY', '0.38'))
 EMAIL_HOST = os.getenv('EMAIL_HOST', '')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'noreply@example.com')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@example.com')
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '15'))  # Stop stalled SMTP connections promptly.
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+# Gioi han concurrency: tranh embedding tasks chiem het worker slot, chan explanation task
+CELERY_WORKER_CONCURRENCY = 2
+# Time limit: embedding task toi da 90s
+CELERY_TASK_SOFT_TIME_LIMIT = 60
+CELERY_TASK_TIME_LIMIT = 90
+# Moi worker chi prefetch 1 task tai 1 thoi diem
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_BEAT_SCHEDULE = {
+    'refresh-weather-cache-every-three-hours': {
+        'task': 'core.tasks.refresh_weather_cache',
+        'schedule': 3 * 60 * 60,
+    },
+    'refresh-rag-knowledge-index-every-six-hours': {
+        'task': 'core.tasks.refresh_knowledge_index',
+        'schedule': 6 * 60 * 60,
+    },
+}
 
 
 # Password validation
@@ -154,6 +207,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -187,3 +241,33 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Keep operational traces from API integrations visible in container logs.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'timestamped',
+        },
+    },
+    'formatters': {
+        'timestamped': {
+            'format': '{asctime} {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'loggers': {
+        'core.views': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core.apps': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
