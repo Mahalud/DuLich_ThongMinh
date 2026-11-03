@@ -9,6 +9,7 @@ import HomePage from './pages/HomePage'
 import AboutPage from './pages/AboutPage'
 import RecommendationsPage from './pages/RecommendationsPage'
 import DestinationDetailPage from './pages/DestinationDetailPage'
+import TripPlanPage from './pages/TripPlanPage'
 import AccommodationDetailPage from './pages/AccommodationDetailPage'
 import BookingPage from './pages/BookingPage'
 import ProfilePage from './pages/ProfilePage'
@@ -81,6 +82,7 @@ function PageRoutes() {
     <Route path="/" element={<HomePage />} />
     <Route path="/gioi-thieu" element={<AboutPage />} />
     <Route path="/goi-y" element={<RecommendationsPage />} />
+    <Route path="/ke-hoach" element={<TripPlanPage />} />
     <Route path="/tro-ly" element={<TravelAssistantPage />} />
     <Route path="/tours" element={<ToursPage />} />
     <Route path="/tours/:id" element={<TourDetailPage />} />

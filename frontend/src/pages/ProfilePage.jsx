@@ -52,6 +52,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState({ travel_preferences: [], budget_estimate: '', weather_preference: 'balanced', free_text: '' })
   const [bookings, setBookings] = useState({ room_bookings: [], tour_bookings: [] })
   const [history, setHistory] = useState([])
+  const [historyPage, setHistoryPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
@@ -61,6 +62,9 @@ export default function ProfilePage() {
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [payingId, setPayingId] = useState(null)
+  const historyPageSize = 8
+  const historyPageCount = Math.max(1, Math.ceil(history.length / historyPageSize))
+  const visibleHistory = history.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize)
 
   const load = useCallback(async () => {
     if (!user?.id) return
@@ -272,10 +276,14 @@ export default function ProfilePage() {
 
     <section className="profile-history search-history-section" aria-labelledby="search-history-title">
       <div className="profile-section-title"><h2 id="search-history-title">Lịch sử tìm kiếm</h2><p>Các tiêu chí gợi ý bạn đã tìm gần đây.</p></div>
-      {history.length ? <div className="search-history-list">{history.map((item) => <article className="search-history-entry" key={item.id}>
+      {history.length ? <><div className="search-history-list">{visibleHistory.map((item) => <article className="search-history-entry" key={item.id}>
         <div><strong>{item.preferences || item.query || 'Mọi sở thích'} · Ngân sách {formatMoney(item.budget_estimate)} · Ngày đi {formatDate(item.travel_date)} · Thời tiết {weatherLabels[item.weather_preference] || weatherLabels.balanced} · Điểm đến hạng 1 {item.destination_name || 'Chưa có'}</strong><small>{formatDateTime(item.created_at)} (giờ Việt Nam)</small></div>
         <Link className="travel-button travel-button--outline" to={replaySearchUrl(item)}>Tìm lại</Link>
-      </article>)}</div> : <div className="empty-state"><h3>Chưa có lịch sử tìm kiếm</h3><p>Các lần tìm gợi ý của bạn sẽ được lưu tại đây.</p><Link to="/goi-y">Khám phá gợi ý</Link></div>}
+      </article>)}</div>{historyPageCount > 1 && <nav className="search-history-pagination" aria-label="Phân trang lịch sử tìm kiếm">
+        <button type="button" className="travel-button travel-button--outline" disabled={historyPage <= 1} onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}>← Trang trước</button>
+        <span>Trang {historyPage} / {historyPageCount} · {history.length} lần tìm</span>
+        <button type="button" className="travel-button travel-button--outline" disabled={historyPage >= historyPageCount} onClick={() => setHistoryPage((page) => Math.min(historyPageCount, page + 1))}>Trang sau →</button>
+      </nav>}</> : <div className="empty-state"><h3>Chưa có lịch sử tìm kiếm</h3><p>Các lần tìm gợi ý của bạn sẽ được lưu tại đây.</p><Link to="/goi-y">Khám phá gợi ý</Link></div>}
     </section>
 
     {cancelTarget && <div className="cancel-confirmation-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !cancelBusy) setCancelTarget(null) }}>

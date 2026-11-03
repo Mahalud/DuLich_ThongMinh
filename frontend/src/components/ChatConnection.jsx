@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { api, backendUrl } from '../api'
+import { api } from '../api'
 
 const ChatConnectionContext = createContext(null)
 const SOUND_KEY = 'travel-chat-sound-enabled'
@@ -97,7 +97,9 @@ export function ChatConnectionProvider({ user, authStatus, children }) {
     const connect = () => {
       if (disposed) return
       setConnection('Đang kết nối')
-      socket = new WebSocket(`${backendUrl.replace(/^http/, 'ws')}/ws/chat/${path}/`)
+      const socketUrl = new URL(`/ws/chat/${path}/`, window.location.origin)
+      socketUrl.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      socket = new WebSocket(socketUrl.toString())
       socketRef.current = socket
       socket.onopen = () => {
         if (disposed || socketRef.current !== socket) return

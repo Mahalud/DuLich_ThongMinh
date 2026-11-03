@@ -231,7 +231,7 @@ export function TravelFeedPage() {
   }
 
   return (
-    <section className="recommend" style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px 64px' }}>
+    <section className="recommend community-page page-shell">
       <div className="section-head" style={{ marginBottom: 28 }}>
         <span className="eyebrow dark">Cộng đồng</span>
         <h1>Chia sẻ trải nghiệm du lịch</h1>
@@ -288,7 +288,7 @@ export function TravelFeedPage() {
         </div>
       )}
       {!loading && posts.length === 0 && (
-        <p style={{ color: '#9cc4d8', textAlign: 'center', marginTop: 48 }}>Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!</p>
+        <p className="community-empty-state">Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!</p>
       )}
       {!loading && posts.length > 0 && (
         <div className="travel-post-grid">
@@ -360,15 +360,15 @@ export function TravelPostDetailPage() {
     } catch (err) { toast(err.message, true) }
   }
 
-  if (loading) return <section style={{ padding: 48, textAlign: 'center', color: '#9cc4d8' }}>Đang tải…</section>
-  if (error) return <section style={{ padding: 48, textAlign: 'center' }}><p className="form-error">{error}</p></section>
+  if (loading) return <section className="travel-post-detail-page">Đang tải…</section>
+  if (error) return <section className="travel-post-detail-page"><p className="form-error">{error}</p></section>
   if (!post) return null
 
   const canDelete = currentUser && (currentUser.id === post.user || currentUser.is_staff)
 
   return (
-    <section style={{ maxWidth: 760, margin: '0 auto', padding: '32px 20px 80px' }}>
-      <Link to="/cong-dong" className="secondary-btn" style={{ display: 'inline-block', marginBottom: 24 }}>← Quay lại</Link>
+    <section className="travel-post-detail-page">
+      <Link to="/cong-dong" className="secondary-btn travel-post-back-link">← Quay lại</Link>
 
       {post.images?.[0] && (
         <div style={{ borderRadius: 20, overflow: 'hidden', marginBottom: 24, maxHeight: 400 }}>
@@ -380,17 +380,17 @@ export function TravelPostDetailPage() {
         </div>
       )}
 
-      <div className="mini-card">
+      <div className="mini-card travel-post-detail-card">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           {post.destination_name && <span className="eyebrow dark">{post.destination_name}</span>}
-          <span style={{ color: '#9cc4d8', fontSize: '0.85rem', alignSelf: 'center' }}>
+          <span className="travel-post-detail-meta">
             {timeAgo(post.created_at)} · ✍ {post.user_name}{post.user_is_demo && <span className="demo-badge">Minh họa</span>}
           </span>
         </div>
 
-        <h1 style={{ margin: '0 0 20px', color: '#f3fbff', fontSize: 'clamp(1.6rem, 3vw, 2.2rem)' }}>{post.title}</h1>
+        <h1 className="travel-post-detail-title">{post.title}</h1>
 
-        <p style={{ color: '#d0e9f8', lineHeight: 1.8, whiteSpace: 'pre-wrap', marginBottom: 28 }}>{post.content}</p>
+        <p className="travel-post-detail-content">{post.content}</p>
 
         {/* Extra images */}
         {post.images?.length > 1 && (

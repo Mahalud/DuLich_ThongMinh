@@ -56,6 +56,8 @@ export default function RecommendationsPage() {
   const [explanation, setExplanation] = useState('')
   const [streamedExplanation, setStreamedExplanation] = useState('')
   const [explanationLoading, setExplanationLoading] = useState(false)
+  const [compareIds, setCompareIds] = useState([])
+  const [compareNotice, setCompareNotice] = useState('')
   const pollTimerRef = useRef(null)
   const deadlineTimerRef = useRef(null)
   const requestSequenceRef = useRef(0)
@@ -166,6 +168,8 @@ export default function RecommendationsPage() {
     setError('')
     setExplanationLoading(false)
     setExplanation('')
+    setCompareIds([])
+    setCompareNotice('')
     explanationAttemptRef.current += 1
     getRecommendations(form)
       .then((res) => {
@@ -204,6 +208,19 @@ export default function RecommendationsPage() {
       budget_score: destination.budget_score,
       distance_score: destination.distance_score,
     }).catch(() => {})
+
+  const toggleCompare = (destination) => {
+    if (compareIds.includes(destination.id)) {
+      setCompareNotice('')
+      setCompareIds((current) => current.filter((id) => id !== destination.id))
+    } else if (compareIds.length >= 3) {
+      setCompareNotice('Bạn đã chọn đủ 3 điểm đến. Bỏ một lựa chọn để so sánh nơi khác.')
+    } else {
+      setCompareNotice('')
+      setCompareIds((current) => current.includes(destination.id) ? current : [...current, destination.id])
+    }
+  }
+  const comparedDestinations = (data.results || []).filter((item) => compareIds.includes(item.id))
 
   const weights = data.weights_used || (originLocation ? { w1: 0.4, w2: 0.25, w3: 0.2, w4: 0.15 } : { w1: 0.470588, w2: 0.294118, w3: 0.235294, w4: 0 })
   const criteria = data.criteria_used || ['preference', 'weather', 'budget', ...(originLocation ? ['distance'] : [])]
@@ -256,18 +273,27 @@ export default function RecommendationsPage() {
       {loading ? (
         <LoadingSkeleton />
       ) : data.results.length ? (
-        <div className="destination-grid recommendation-results">
-          {data.results.map((item, index) => (
-            <DestinationCard
-              key={item.id}
-              destination={item}
-              score={item.score}
-              rank={index + 1}
-              criteriaUsed={data.criteria_used}
-              onViewDetail={recordViewedDetail}
-            />
-          ))}
-        </div>
+        <>
+          <section className="destination-compare detail-surface" aria-label="So sánh điểm đến">
+            <div className="destination-compare-heading"><div><h2>So sánh điểm đến</h2><p>Chọn tối đa 3 nơi để đối chiếu chi phí, thời tiết và điểm phù hợp.</p></div><span>{comparedDestinations.length}/3 đã chọn</span></div>
+            {compareNotice && <p className="destination-compare-notice" role="status">{compareNotice}</p>}
+            {comparedDestinations.length ? <div className="destination-compare-scroll"><table><thead><tr><th>Tiêu chí</th>{comparedDestinations.map((item) => <th key={item.id}>{item.name}<button type="button" onClick={() => toggleCompare(item)} aria-label={`Bỏ ${item.name} khỏi so sánh`}>Bỏ</button></th>)}</tr></thead><tbody>
+              <tr><th>Loại</th>{comparedDestinations.map((item) => <td key={item.id}>{item.category || 'Chưa phân loại'}</td>)}</tr>
+              <tr><th>Đánh giá</th>{comparedDestinations.map((item) => <td key={item.id}>{Number(item.rating || 0).toFixed(1)} / 5</td>)}</tr>
+              <tr><th>Chi phí tham khảo</th>{comparedDestinations.map((item) => <td key={item.id}>{Number(item.estimated_cost || 0) ? `${Number(item.estimated_cost).toLocaleString('vi-VN')} đ` : 'Chưa cập nhật'}</td>)}</tr>
+              {criteria.includes('distance') && <tr><th>Khoảng cách</th>{comparedDestinations.map((item) => <td key={item.id}>{item.distance_km == null ? 'Chưa tính' : `${Number(item.distance_km).toFixed(1)} km`}</td>)}</tr>}
+              {criteria.includes('preference') && <tr><th>Mức khớp sở thích</th>{comparedDestinations.map((item) => <td key={item.id}>{item.preference_matched === false ? 'Chưa khớp rõ' : `${Math.round(Number(item.preference_score || 0) * 100)}%`}</td>)}</tr>}
+              <tr><th>Thời tiết ngày đi</th>{comparedDestinations.map((item) => <td key={item.id}>{item.weather_available && item.weather ? `${Math.round(Number(item.weather.temperature_c))}°C · mưa ${Math.round(Number(item.weather.rain_probability))}% · gió ${Math.round(Number(item.weather.wind_kmh))} km/h` : 'Chưa có dữ liệu'}</td>)}</tr>
+              {criterionWeights.filter(([key]) => criteria.includes(key)).map(([criterion, , label]) => <tr key={criterion}><th>{label}</th>{comparedDestinations.map((item) => <td key={item.id}>{item[`${criterion}_score`] == null ? 'Chưa tính' : `${Math.round(Number(item[`${criterion}_score`]) * 100)}%`}</td>)}</tr>)}
+              <tr><th>Điểm tổng</th>{comparedDestinations.map((item) => <td key={item.id}><strong>{Math.round(Number(item.score || 0) * 100)}%</strong></td>)}</tr>
+            </tbody></table></div> : <p className="destination-compare-empty">Chọn “So sánh” trên các thẻ điểm đến để xem bảng đối chiếu.</p>}
+          </section>
+          <div className="destination-grid recommendation-results">
+            {data.results.map((item, index) => (
+              <DestinationCard key={item.id} destination={item} score={item.score} rank={index + 1} criteriaUsed={data.criteria_used} onViewDetail={recordViewedDetail} isCompared={compareIds.includes(item.id)} onToggleCompare={toggleCompare} />
+            ))}
+          </div>
+        </>
       ) : <EmptyState title="Chưa tìm thấy điểm đến phù hợp" description="Thử điều chỉnh sở thích, ngân sách hoặc vị trí xuất phát để mở rộng lựa chọn." />}
     </section>
   )

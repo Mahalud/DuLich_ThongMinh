@@ -14,7 +14,7 @@ function scorePercent(value) {
   return Math.round(Math.max(0, Math.min(1, numeric)) * 100)
 }
 
-export default function DestinationCard({ destination, score, onViewDetail, rank = 1, criteriaUsed }) {
+export default function DestinationCard({ destination, score, onViewDetail, rank = 1, criteriaUsed, isCompared = false, onToggleCompare }) {
   const usedCriteria = Array.isArray(criteriaUsed)
     ? criteriaUsed
     : SCORE_PARTS.filter(([key]) => destination[key] != null).map(([, criterion]) => criterion)
@@ -49,7 +49,14 @@ export default function DestinationCard({ destination, score, onViewDetail, rank
         <small>{destination.weather.summary}</small>
       </div>}
       {!destination.weather_available && <p className="recommendation-weather-unavailable">Chưa có dữ liệu thời tiết</p>}
-      <div className="recommendation-card-footer"><div className="recommendation-card-meta">{destination.distance_km != null && <span>{destination.distance_km} km</span>}<span>Ngân sách ước tính {Number(destination.estimated_cost || 0).toLocaleString('vi-VN')} đ</span></div><Link className="recommendation-detail-link" to={`/diem-den/${destination.id}`} onClick={() => onViewDetail?.(destination)}>Xem chi tiết <ArrowRight size={16} /></Link></div>
+      <div className="recommendation-card-footer">
+        <div className="recommendation-card-meta">{destination.distance_km != null && <span>{destination.distance_km} km</span>}<span>Ngân sách ước tính {Number(destination.estimated_cost || 0).toLocaleString('vi-VN')} đ</span></div>
+        <div className="recommendation-card-actions">
+          <button className={`compare-toggle${isCompared ? ' is-selected' : ''}`} type="button" aria-pressed={isCompared} onClick={() => onToggleCompare?.(destination)}>{isCompared ? 'Đã chọn so sánh' : 'So sánh'}</button>
+          <Link className="recommendation-detail-link" to={`/diem-den/${destination.id}`} onClick={() => onViewDetail?.(destination)}>Xem chi tiết <ArrowRight size={16} /></Link>
+          <Link className="recommendation-plan-link" to={`/ke-hoach?destination=${destination.id}`}>Lập kế hoạch</Link>
+        </div>
+      </div>
     </div>
   </article>
 }

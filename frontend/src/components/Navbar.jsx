@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Compass, Menu, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useChatConnection } from './ChatConnection'
 
@@ -31,7 +31,7 @@ export default function Navbar() {
       : <Link className="travel-button travel-button--primary" to="/dang-nhap">Đăng nhập</Link>
   return <header className={`topbar travel-navbar ${solid ? 'is-solid' : 'is-over-hero'}`}>
     <div className="navbar-inner">
-      <Link className="brand" to="/" aria-label="Du lịch thông minh, về trang chủ"><span className="brand-mark"><Compass size={21} /></span><span>Đi Việt Nam</span></Link>
+      <Link className="brand" to="/" aria-label="Du lịch thông minh, về trang chủ"><span className="brand-mark"><img src="/brand/divietnam-logo.png" alt="" /></span><span>Đi Việt Nam</span></Link>
       <button className="mobile-menu-toggle" type="button" aria-label={menuOpen ? 'Đóng menu' : 'Mở menu'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X /> : <Menu />}</button>
       <nav className={`main-nav ${menuOpen ? 'is-open' : ''}`} aria-label="Điều hướng chính">
         <NavLink className={navLinkClass} to="/" end>Trang chủ</NavLink>
@@ -42,6 +42,7 @@ export default function Navbar() {
         <NavLink className={navLinkClass} to="/gioi-thieu">Giới thiệu</NavLink>
         <NavLink className={navLinkClass} to="/ho-so">Hồ sơ</NavLink>
         {status === 'authenticated' && (user?.is_staff || user?.is_superuser) && <NavLink className={navLinkClass} to="/quan-tri">Quản trị{unreadCount > 0 && <span className="navbar-unread" aria-label={`${unreadCount} tin nhắn chưa đọc`}>{unreadCount > 99 ? '99+' : unreadCount}</span>}</NavLink>}
+        <NavLink className={navLinkClass} to="/ke-hoach">Kế hoạch</NavLink>
         <div className="mobile-auth-action">{authControl}</div>
       </nav>
       <div className="header-actions">{authControl}</div>

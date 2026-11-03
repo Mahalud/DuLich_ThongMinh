@@ -1,5 +1,5 @@
 const configuredBackendUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-const localBackendUrl = import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin
+const localBackendUrl = import.meta.env.DEV ? '' : window.location.origin
 export const backendUrl = (configuredBackendUrl || localBackendUrl).replace(/\/+$/, '')
 
 let cachedCsrfToken = ''

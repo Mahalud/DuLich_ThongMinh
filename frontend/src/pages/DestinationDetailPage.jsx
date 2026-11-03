@@ -4,7 +4,7 @@ import { api, getDestinations, getNearby, getWeather } from '../api'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import RouteMap from '../RouteMap'
 import { CategoryChip, ErrorNotice, RatingStars, TravelImage } from '../components/DesignSystem'
-import { CloudRain, CloudSun, MapPin, SlidersHorizontal, Star, Wind } from 'lucide-react'
+import { CloudRain, CloudSun, MapPin, QrCode, SlidersHorizontal, Star, Wind, X } from 'lucide-react'
 import { useOrigin } from '../origin'
 
 const localDateString = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
@@ -22,10 +22,14 @@ export default function DestinationDetailPage() {
   const [radius, setRadius] = useState('10')
   const [travelDate, setTravelDate] = useState(today)
   const [weather, setWeather] = useState(null)
+  const [qrOpen, setQrOpen] = useState(false)
   const [error, setError] = useState('')
   const [weatherError, setWeatherError] = useState('')
   const coverRef = useRef(null)
   const nearbyLoadedRef = useRef({ radius: 10, count: 0 })
+  const destinationUrl = typeof window === 'undefined' ? '' : `${window.location.origin}/diem-den/${id}`
+  const qrParams = new URLSearchParams({ size: '320x320', format: 'png', qzone: '2', data: destinationUrl })
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?${qrParams.toString()}`
 
   useEffect(() => { getDestinations().then((items) => setDestination(items.find((item) => String(item.id) === id))).catch((err) => setError(err.message)) }, [id])
   useEffect(() => {
@@ -56,6 +60,12 @@ export default function DestinationDetailPage() {
     getWeather(destination, travelDate).then((data) => { if (active) setWeather(data) }).catch((err) => { if (active) setWeatherError(err.message) })
     return () => { active = false }
   }, [destination, travelDate])
+  useEffect(() => {
+    if (!qrOpen) return undefined
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setQrOpen(false) }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [qrOpen])
   useEffect(() => {
     const cover = coverRef.current
     if (!cover || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
@@ -107,7 +117,18 @@ export default function DestinationDetailPage() {
           {!nearbyLoading && radiusComparison?.target === Number(radius) && Number(radius) > radiusComparison.from && nearby.length <= radiusComparison.count && <p className="radius-no-additions">Không có thêm chỗ ở nào trong bán kính này</p>}
         </section>
       </div>
-      <aside className="destination-aside"><div className="destination-aside-card"><span className="section-kicker">Lên đường khám phá</span><h2>{destination.name}</h2><p>Điểm đến phù hợp đang chờ bạn. Xem gợi ý được cá nhân hóa theo ngày đi và vị trí xuất phát.</p><Link to="/goi-y" className="travel-button travel-button--primary">Tạo hành trình <span aria-hidden="true">→</span></Link></div></aside>
+      <aside className="destination-aside"><div className="destination-aside-card"><span className="section-kicker">Lên đường khám phá</span><h2>{destination.name}</h2><p>Thêm điểm đến này vào lịch trình, chọn ngày đi và kết hợp với các điểm khác.</p><Link to={`/ke-hoach?destination=${destination.id}`} className="travel-button travel-button--primary">Tạo hành trình với điểm đến này <span aria-hidden="true">→</span></Link><button className="travel-button travel-button--outline destination-qr-trigger" type="button" onClick={() => setQrOpen(true)}><QrCode size={17} /> Chia sẻ bằng mã QR</button></div></aside>
     </div>
+    {qrOpen && <div className="destination-qr-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setQrOpen(false) }}>
+      <section className="destination-qr-dialog" role="dialog" aria-modal="true" aria-labelledby="destination-qr-title">
+        <button className="destination-qr-close" type="button" aria-label="Đóng mã QR" onClick={() => setQrOpen(false)}><X size={19} /></button>
+        <span className="destination-qr-icon"><QrCode size={22} /></span>
+        <h2 id="destination-qr-title">Chia sẻ {destination.name}</h2>
+        <p>Quét mã bằng điện thoại để mở thẳng trang điểm đến này.</p>
+        <img className="destination-qr-image" src={qrImageUrl} alt={`Mã QR mở trang ${destination.name}`} />
+        <a className="travel-button travel-button--primary destination-qr-download" href={qrImageUrl} target="_blank" rel="noreferrer">Mở ảnh QR để lưu</a>
+        <small>Dịch vụ QR bên ngoài chỉ nhận đường dẫn công khai này để tạo ảnh: {destinationUrl}</small>
+      </section>
+    </div>}
   </section>
 }
